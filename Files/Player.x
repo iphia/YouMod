@@ -984,7 +984,7 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
                 
                 percentString = [NSString stringWithFormat:@" %d%%", (int)(newVolume * 100)];
             } else if (controlType == 3) {
-                float speedSensitivity = 8.0; 
+                float speedSensitivity = 1.0; 
                 float speedDelta = (-adjustedTranslation / self.view.bounds.size.height) * speedSensitivity;
                 float rawSpeed = initialSpeed + speedDelta;
                 float clampedSpeed = fmaxf(fminf(rawSpeed, 10.0), 0.25);
