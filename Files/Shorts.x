@@ -1,5 +1,6 @@
 #import "Headers.h"
 #import <objc/runtime.h>
+#import <objc/message.h>
 
 // Enables shorts quality - works best with YTClassicVideoQuality
 %hook YTHotConfig
@@ -28,90 +29,268 @@
 - (BOOL)mobileShortsTablnlinedExpandWatchOnDismiss { return IS_ENABLED(ShowShortsSeekbar) ? YES : %orig; }
 %end
 
+static const void *YMShortsEndTimerKey   = &YMShortsEndTimerKey;
+static const void *YMShortsEndVideoKey   = &YMShortsEndVideoKey;
 static const void *YMShortsEndHandledKey = &YMShortsEndHandledKey;
 
-static void YouModMakeAShortsAction(
-    YTReelPlayerViewController *self,
-    YTSingleVideoController *video,
-    YTSingleVideoTime *time
-) {
-    NSInteger action = INTFORVAL(ShortsActionIndex);
+static void YMStopShortsEndTimer(YTReelPlayerViewController *controller) {
+    NSTimer *timer =
+        objc_getAssociatedObject(controller, YMShortsEndTimerKey);
 
-    if (action == 0 || !video || !time)
-        return;
-
-    CGFloat duration = video.totalMediaTime;
-    CGFloat current = time.time;
-
-    if (!isfinite(duration) ||
-        !isfinite(current) ||
-        duration <= 0.0 ||
-        current < 0.0) {
-        return;
-    }
-
-    /*
-     * 같은 쇼츠를 다시 처음부터 재생한 경우
-     * 종료 처리 플래그를 초기화.
-     */
-    if (current < 0.5) {
+    if (timer) {
+        [timer invalidate];
         objc_setAssociatedObject(
-            video,
-            YMShortsEndHandledKey,
-            @NO,
+            controller,
+            YMShortsEndTimerKey,
+            nil,
             OBJC_ASSOCIATION_RETAIN_NONATOMIC
         );
-        return;
     }
+}
 
-    /*
-     * 이미 이 재생에서 종료 동작을 실행했다면
-     * 다시 실행하지 않음.
-     */
+static void YMPerformShortsEndAction(
+    YTReelPlayerViewController *controller,
+    YTSingleVideoController *video,
+    NSInteger action,
+    BOOL alreadyLooped
+) {
     NSNumber *handled =
-        objc_getAssociatedObject(video, YMShortsEndHandledKey);
+        objc_getAssociatedObject(controller, YMShortsEndHandledKey);
 
     if (handled.boolValue)
         return;
 
-    CGFloat remaining = duration - current;
-
-    /*
-     * 마지막 0.05초에서 종료 처리.
-     *
-     * 기존 floor() 방식은 최대 약 1초 일찍
-     * 종료됐지만 이쪽은 약 50ms만 남기고 처리함.
-     */
-    const CGFloat tolerance = 0.05;
-
-    if (remaining > tolerance)
-        return;
-
-    /*
-     * YouTube에서 시간이 아주 조금 duration을
-     * 넘어 보고되는 경우도 허용.
-     */
-    if (remaining < -0.25)
-        return;
-
-    /*
-     * 동작을 먼저 처리 완료 상태로 만들어서
-     * 연속으로 들어오는 time callback이
-     * pause/next를 여러 번 실행하지 않도록 함.
-     */
     objc_setAssociatedObject(
-        video,
+        controller,
         YMShortsEndHandledKey,
         @YES,
         OBJC_ASSOCIATION_RETAIN_NONATOMIC
     );
 
+    YMStopShortsEndTimer(controller);
+
     if (action == 1) {
-        [self reelContentViewRequestsAdvanceToNextVideo:nil];
+        // 다음 쇼츠
+        [controller reelContentViewRequestsAdvanceToNextVideo:nil];
 
     } else if (action == 2) {
-        [self reelContentViewRequestsPlayPauseToggle:nil];
+        // 현재 쇼츠 정지
+        [controller reelContentViewRequestsPlayPauseToggle:nil];
+
+        /*
+         * 아주 드물게 YouTube가 먼저 루프를 시작해버린 경우
+         * 마지막 프레임 근처로 다시 이동.
+         */
+        if (alreadyLooped) {
+            id player = controller.player;
+            SEL seekSelector = NSSelectorFromString(@"seekToTime:");
+
+            if (player &&
+                [player respondsToSelector:seekSelector]) {
+
+                CGFloat target =
+                    MAX(video.totalMediaTime - 0.03, 0.0);
+
+                ((void (*)(id, SEL, CGFloat))objc_msgSend)(
+                    player,
+                    seekSelector,
+                    target
+                );
+            }
+        }
     }
+}
+
+static void YouModMakeAShortsAction(
+    YTReelPlayerViewController *controller,
+    YTSingleVideoController *video,
+    YTSingleVideoTime *time
+) {
+    NSInteger action = INTFORVAL(ShortsActionIndex);
+
+    if (action == 0 || !video || !time) {
+        YMStopShortsEndTimer(controller);
+        return;
+    }
+
+    CGFloat duration = video.totalMediaTime;
+    CGFloat current = time.time;
+
+    if (duration <= 0.0 || current < 0.0)
+        return;
+
+    /*
+     * 다른 쇼츠로 넘어갔으면 상태 초기화.
+     */
+    id trackedVideo =
+        objc_getAssociatedObject(controller, YMShortsEndVideoKey);
+
+    if (trackedVideo != video) {
+        YMStopShortsEndTimer(controller);
+
+        objc_setAssociatedObject(
+            controller,
+            YMShortsEndVideoKey,
+            video,
+            OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        );
+
+        objc_setAssociatedObject(
+            controller,
+            YMShortsEndHandledKey,
+            @NO,
+            OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        );
+    }
+
+    /*
+     * 같은 쇼츠를 다시 처음부터 재생한 경우에도 초기화.
+     */
+    if (current < 0.25) {
+        objc_setAssociatedObject(
+            controller,
+            YMShortsEndHandledKey,
+            @NO,
+            OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        );
+    }
+
+    NSNumber *handled =
+        objc_getAssociatedObject(controller, YMShortsEndHandledKey);
+
+    if (handled.boolValue)
+        return;
+
+    /*
+     * 아직 마지막 1초가 아니면 평소처럼 아무것도 안 함.
+     */
+    CGFloat remaining = duration - current;
+
+    if (remaining > 1.0)
+        return;
+
+    /*
+     * 마지막 1초에 들어왔으면 고해상도 감시 타이머 시작.
+     * 이미 실행 중이면 추가로 만들지 않음.
+     */
+    NSTimer *existingTimer =
+        objc_getAssociatedObject(controller, YMShortsEndTimerKey);
+
+    if (existingTimer)
+        return;
+
+    __weak YTReelPlayerViewController *weakController = controller;
+    __weak YTSingleVideoController *weakVideo = video;
+
+    __block CGFloat previousTime = current;
+
+    NSTimer *timer =
+        [NSTimer timerWithTimeInterval:0.01
+                               repeats:YES
+                                 block:^(NSTimer *timer) {
+
+        YTReelPlayerViewController *strongController =
+            weakController;
+
+        YTSingleVideoController *strongVideo =
+            weakVideo;
+
+        if (!strongController || !strongVideo) {
+            [timer invalidate];
+            return;
+        }
+
+        /*
+         * 사용자가 설정을 바꿨다면 즉시 중단.
+         */
+        NSInteger currentAction =
+            INTFORVAL(ShortsActionIndex);
+
+        if (currentAction == 0) {
+            YMStopShortsEndTimer(strongController);
+            return;
+        }
+
+        /*
+         * 타이머를 시작한 뒤 다른 쇼츠로 넘겼는지도 확인.
+         */
+        id tracked =
+            objc_getAssociatedObject(
+                strongController,
+                YMShortsEndVideoKey
+            );
+
+        if (tracked != strongVideo) {
+            YMStopShortsEndTimer(strongController);
+            return;
+        }
+
+        id player = strongController.player;
+
+        if (!player) {
+            YMStopShortsEndTimer(strongController);
+            return;
+        }
+
+        SEL currentSelector =
+            NSSelectorFromString(@"currentVideoMediaTime");
+
+        if (![player respondsToSelector:currentSelector]) {
+            YMStopShortsEndTimer(strongController);
+            return;
+        }
+
+        CGFloat actualTime =
+            ((CGFloat (*)(id, SEL))objc_msgSend)(
+                player,
+                currentSelector
+            );
+
+        CGFloat total =
+            strongVideo.totalMediaTime;
+
+        /*
+         * 마지막 약 0.03초까지 실제로 재생한 뒤 정지.
+         */
+        if (actualTime >= total - 0.03) {
+            YMPerformShortsEndAction(
+                strongController,
+                strongVideo,
+                currentAction,
+                NO
+            );
+            return;
+        }
+
+        /*
+         * YouTube가 우리가 멈추기 전에 이미 0초로
+         * 루프해버렸다면 이를 감지.
+         */
+        if (previousTime >= total - 0.30 &&
+            actualTime < 0.25) {
+
+            YMPerformShortsEndAction(
+                strongController,
+                strongVideo,
+                currentAction,
+                YES
+            );
+            return;
+        }
+
+        previousTime = actualTime;
+    }];
+
+    objc_setAssociatedObject(
+        controller,
+        YMShortsEndTimerKey,
+        timer,
+        OBJC_ASSOCIATION_RETAIN_NONATOMIC
+    );
+
+    [[NSRunLoop mainRunLoop]
+        addTimer:timer
+        forMode:NSRunLoopCommonModes];
 }
 
 static BOOL isShortsOnlyOn = YES;
