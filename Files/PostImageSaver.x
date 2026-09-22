@@ -158,18 +158,21 @@ static UIViewController *YMOwningController(UIView *view) {
 - (void)didEnterVisibleState {
     %orig;
 
-    YMCurrentPostImageNode = self;
+    id node = (id)self;
+    YMCurrentPostImageNode = node;
 
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (![self respondsToSelector:@selector(view)])
+        SEL viewSelector = NSSelectorFromString(@"view");
+
+        if (![node respondsToSelector:viewSelector])
             return;
 
         UIView *view =
             ((id (*)(id, SEL))objc_msgSend)(
-                self,
-                @selector(view));
+                node,
+                viewSelector);
 
-        if (!view.window)
+        if (!view || !view.window)
             return;
 
         UIViewController *controller =
@@ -180,7 +183,7 @@ static UIViewController *YMOwningController(UIView *view) {
                 @"YTInterstitialElementsViewControllerImpl");
 
         if (!controller ||
-            !viewerClass ||
+            viewerClass == Nil ||
             ![controller isKindOfClass:viewerClass])
             return;
 
@@ -192,6 +195,7 @@ static UIViewController *YMOwningController(UIView *view) {
 
         if (existing) {
             existing.hidden = NO;
+            [controller.view bringSubviewToFront:existing];
             return;
         }
 
@@ -202,7 +206,7 @@ static UIViewController *YMOwningController(UIView *view) {
 
         UIImageSymbolConfiguration *config =
             [UIImageSymbolConfiguration
-                configurationWithPointSize:18
+                configurationWithPointSize:18.0
                                     weight:UIImageSymbolWeightSemibold];
 
         UIImage *icon =
@@ -228,18 +232,18 @@ static UIViewController *YMOwningController(UIView *view) {
             [button.leadingAnchor
                 constraintEqualToAnchor:
                     controller.view.leadingAnchor
-                             constant:12],
+                             constant:12.0],
 
             [button.topAnchor
                 constraintEqualToAnchor:
                     controller.view.safeAreaLayoutGuide.topAnchor
-                             constant:8],
+                             constant:8.0],
 
             [button.widthAnchor
-                constraintEqualToConstant:44],
+                constraintEqualToConstant:44.0],
 
             [button.heightAnchor
-                constraintEqualToConstant:44]
+                constraintEqualToConstant:44.0]
         ]];
     });
 }
