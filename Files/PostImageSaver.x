@@ -232,7 +232,7 @@ static UIViewController *YMOwningController(UIView *view) {
             [button.leadingAnchor
                 constraintEqualToAnchor:
                     controller.view.leadingAnchor
-                             constant:12.0],
+                             constant:100.0],
 
             [button.topAnchor
                 constraintEqualToAnchor:
