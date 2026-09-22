@@ -178,24 +178,32 @@ static UIViewController *YMOwningController(UIView *view) {
         UIViewController *controller =
             YMOwningController(view);
 
-        Class viewerClass =
-            NSClassFromString(
-                @"YTInterstitialElementsViewControllerImpl");
+        /*
+         * 예전에는 여기서
+         * YTInterstitialElementsViewControllerImpl인지 검사했는데,
+         * A/B UI 대응을 위해 제거.
+         */
 
-        if (!controller ||
-            viewerClass == Nil ||
-            ![controller isKindOfClass:viewerClass])
+        UIView *container = controller.view;
+
+        /*
+         * 컨트롤러를 못 찾더라도 window에 붙여서
+         * 최대한 동작하도록 fallback.
+         */
+        if (!container)
+            container = view.window;
+
+        if (!container)
             return;
 
         const NSInteger buttonTag = 0x594D5049;
 
         UIButton *existing =
-            (UIButton *)[controller.view
-                viewWithTag:buttonTag];
+            (UIButton *)[container viewWithTag:buttonTag];
 
         if (existing) {
             existing.hidden = NO;
-            [controller.view bringSubviewToFront:existing];
+            [container bringSubviewToFront:existing];
             return;
         }
 
@@ -219,6 +227,11 @@ static UIViewController *YMOwningController(UIView *view) {
 
         button.tintColor = UIColor.whiteColor;
 
+        button.layer.shadowColor = UIColor.blackColor.CGColor;
+        button.layer.shadowOpacity = 0.6;
+        button.layer.shadowRadius = 3.0;
+        button.layer.shadowOffset = CGSizeZero;
+
         button.translatesAutoresizingMaskIntoConstraints = NO;
 
         [button
@@ -226,18 +239,19 @@ static UIViewController *YMOwningController(UIView *view) {
                action:@selector(saveTapped:)
      forControlEvents:UIControlEventTouchUpInside];
 
-        [controller.view addSubview:button];
+        [container addSubview:button];
+        [container bringSubviewToFront:button];
 
         [NSLayoutConstraint activateConstraints:@[
             [button.leadingAnchor
                 constraintEqualToAnchor:
-                    controller.view.leadingAnchor
-                             constant:100.0],
+                    container.leadingAnchor
+                             constant:12.0],
 
             [button.topAnchor
                 constraintEqualToAnchor:
-                    controller.view.safeAreaLayoutGuide.topAnchor
-                             constant:98.0],
+                    container.safeAreaLayoutGuide.topAnchor
+                             constant:60.0],
 
             [button.widthAnchor
                 constraintEqualToConstant:44.0],
