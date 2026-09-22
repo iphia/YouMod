@@ -1,4 +1,5 @@
 #import "Headers.h"
+#import <objc/runtime.h>
 
 // Enables shorts quality - works best with YTClassicVideoQuality
 %hook YTHotConfig
@@ -27,15 +28,89 @@
 - (BOOL)mobileShortsTablnlinedExpandWatchOnDismiss { return IS_ENABLED(ShowShortsSeekbar) ? YES : %orig; }
 %end
 
-static void YouModMakeAShortsAction(YTReelPlayerViewController *self, YTSingleVideoController *video, YTSingleVideoTime *time) {
-    if (INTFORVAL(ShortsActionIndex) == 0) return;
+static const void *YMShortsEndHandledKey = &YMShortsEndHandledKey;
 
-    if (floor(time.time) >= floor(video.totalMediaTime)) {
-        if (INTFORVAL(ShortsActionIndex) == 1) {
-            [self reelContentViewRequestsAdvanceToNextVideo:nil];
-        } else if (INTFORVAL(ShortsActionIndex) == 2) {
-            [self reelContentViewRequestsPlayPauseToggle:nil];
-        }
+static void YouModMakeAShortsAction(
+    YTReelPlayerViewController *self,
+    YTSingleVideoController *video,
+    YTSingleVideoTime *time
+) {
+    NSInteger action = INTFORVAL(ShortsActionIndex);
+
+    if (action == 0 || !video || !time)
+        return;
+
+    CGFloat duration = video.totalMediaTime;
+    CGFloat current = time.time;
+
+    if (!isfinite(duration) ||
+        !isfinite(current) ||
+        duration <= 0.0 ||
+        current < 0.0) {
+        return;
+    }
+
+    /*
+     * 같은 쇼츠를 다시 처음부터 재생한 경우
+     * 종료 처리 플래그를 초기화.
+     */
+    if (current < 0.5) {
+        objc_setAssociatedObject(
+            video,
+            YMShortsEndHandledKey,
+            @NO,
+            OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        );
+        return;
+    }
+
+    /*
+     * 이미 이 재생에서 종료 동작을 실행했다면
+     * 다시 실행하지 않음.
+     */
+    NSNumber *handled =
+        objc_getAssociatedObject(video, YMShortsEndHandledKey);
+
+    if (handled.boolValue)
+        return;
+
+    CGFloat remaining = duration - current;
+
+    /*
+     * 마지막 0.05초에서 종료 처리.
+     *
+     * 기존 floor() 방식은 최대 약 1초 일찍
+     * 종료됐지만 이쪽은 약 50ms만 남기고 처리함.
+     */
+    const CGFloat tolerance = 0.05;
+
+    if (remaining > tolerance)
+        return;
+
+    /*
+     * YouTube에서 시간이 아주 조금 duration을
+     * 넘어 보고되는 경우도 허용.
+     */
+    if (remaining < -0.25)
+        return;
+
+    /*
+     * 동작을 먼저 처리 완료 상태로 만들어서
+     * 연속으로 들어오는 time callback이
+     * pause/next를 여러 번 실행하지 않도록 함.
+     */
+    objc_setAssociatedObject(
+        video,
+        YMShortsEndHandledKey,
+        @YES,
+        OBJC_ASSOCIATION_RETAIN_NONATOMIC
+    );
+
+    if (action == 1) {
+        [self reelContentViewRequestsAdvanceToNextVideo:nil];
+
+    } else if (action == 2) {
+        [self reelContentViewRequestsPlayPauseToggle:nil];
     }
 }
 
