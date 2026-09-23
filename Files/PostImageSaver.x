@@ -3,7 +3,6 @@
 #import <objc/message.h>
 
 static __weak id YMCurrentPostImageNode;
-static const NSInteger YMPostImageButtonTag = 0x594D5049;
 
 static NSURL *YMOriginalPostImageURL(NSURL *url) {
     if (!url) return nil;
