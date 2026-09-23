@@ -213,7 +213,142 @@ static UIWindow *YMZoomWindowForNode(id node) {
 
     return window;
 }
+static void YMCollectViewStates(
+    UIView *view,
+    NSMutableDictionary<NSValue *, NSDictionary *> *states
+) {
+    if (!view)
+        return;
 
+    NSValue *key =
+        [NSValue valueWithPointer:(__bridge const void *)view];
+
+    CGRect frame = CGRectZero;
+
+    if (view.window) {
+        frame =
+            [view convertRect:view.bounds
+                       toView:view.window];
+    }
+
+    states[key] = @{
+        @"hidden": @(view.hidden),
+        @"alpha": @(view.alpha),
+        @"frame": [NSValue valueWithCGRect:frame]
+    };
+
+    for (UIView *subview in view.subviews) {
+        YMCollectViewStates(subview, states);
+    }
+}
+
+
+static void YMFindChangedViews(
+    UIView *view,
+    NSDictionary<NSValue *, NSDictionary *> *before,
+    UIWindow *window,
+    NSMutableString *info
+) {
+    if (!view || !window)
+        return;
+
+    NSValue *key =
+        [NSValue valueWithPointer:(__bridge const void *)view];
+
+    NSDictionary *oldState =
+        before[key];
+
+    CGRect frame =
+        [view convertRect:view.bounds
+                   toView:window];
+
+    CGFloat windowArea =
+        window.bounds.size.width *
+        window.bounds.size.height;
+
+    CGFloat area =
+        MAX(frame.size.width, 0) *
+        MAX(frame.size.height, 0);
+
+    CGFloat ratio =
+        windowArea > 0 ? area / windowArea : 0;
+
+    BOOL isNew =
+        oldState == nil;
+
+    BOOL becameVisible = NO;
+    BOOL becameLarge = NO;
+
+    if (oldState) {
+        BOOL oldHidden =
+            [oldState[@"hidden"] boolValue];
+
+        CGFloat oldAlpha =
+            [oldState[@"alpha"] doubleValue];
+
+        CGRect oldFrame =
+            [oldState[@"frame"] CGRectValue];
+
+        CGFloat oldArea =
+            MAX(oldFrame.size.width, 0) *
+            MAX(oldFrame.size.height, 0);
+
+        becameVisible =
+            (oldHidden && !view.hidden) ||
+            (oldAlpha < 0.05 && view.alpha >= 0.05);
+
+        if (oldArea > 0) {
+            becameLarge =
+                area > oldArea * 3.0;
+        }
+    }
+
+    /*
+     * 화면의 10% 이상을 차지하는 뷰 중
+     * 새로 생겼거나 크게 변한 것만 출력.
+     */
+    if (!view.hidden &&
+        view.alpha > 0.05 &&
+        ratio >= 0.10 &&
+        (isNew || becameVisible || becameLarge)) {
+
+        NSString *superName =
+            view.superview
+                ? NSStringFromClass(view.superview.class)
+                : @"nil";
+
+        [info appendFormat:
+            @"VIEW\n"
+             @"class: %@\n"
+             @"super: %@\n"
+             @"new: %@\n"
+             @"visibleChanged: %@\n"
+             @"largeChanged: %@\n"
+             @"frame: %.1f %.1f %.1f %.1f\n"
+             @"screenRatio: %.2f\n"
+             @"subviews: %lu\n\n",
+             NSStringFromClass(view.class),
+             superName,
+             isNew ? @"YES" : @"NO",
+             becameVisible ? @"YES" : @"NO",
+             becameLarge ? @"YES" : @"NO",
+             frame.origin.x,
+             frame.origin.y,
+             frame.size.width,
+             frame.size.height,
+             ratio,
+             (unsigned long)view.subviews.count];
+    }
+
+    for (UIView *subview in view.subviews) {
+        YMFindChangedViews(
+            subview,
+            before,
+            window,
+            info
+        );
+    }
+}
 
 %hook YTImageZoomNode
 
@@ -228,7 +363,8 @@ static UIWindow *YMZoomWindowForNode(id node) {
 - (void)handleTapGesture:(id)gesture {
     id node = (id)self;
 
-    SEL viewSelector = NSSelectorFromString(@"view");
+    SEL viewSelector =
+        NSSelectorFromString(@"view");
 
     UIView *sourceView = nil;
 
@@ -240,11 +376,30 @@ static UIWindow *YMZoomWindowForNode(id node) {
             );
     }
 
-    UIViewController *beforeController =
-        YMOwningController(sourceView);
+    UIWindow *window =
+        sourceView.window;
+
+    if (!window) {
+        %orig;
+        return;
+    }
+
+    /*
+     * 사진을 열기 직전의 전체 view 상태 저장.
+     */
+    NSMutableDictionary *before =
+        [NSMutableDictionary dictionary];
+
+    YMCollectViewStates(
+        window,
+        before
+    );
 
     %orig;
 
+    /*
+     * 새 이미지 UI가 만들어질 시간을 기다림.
+     */
     dispatch_after(
         dispatch_time(
             DISPATCH_TIME_NOW,
@@ -255,122 +410,72 @@ static UIWindow *YMZoomWindowForNode(id node) {
         NSMutableString *info =
             [NSMutableString string];
 
-        [info appendFormat:
-            @"source VC: %@\n",
-            beforeController
-                ? NSStringFromClass(beforeController.class)
-                : @"nil"];
+        [info appendString:
+            @"=== NEW / CHANGED LARGE VIEWS ===\n\n"];
 
-        UIWindow *zoomWindow =
-            YMZoomWindowForNode(node);
-
-        [info appendFormat:
-            @"zoomWindow: %@\n",
-            zoomWindow
-                ? NSStringFromClass(zoomWindow.class)
-                : @"nil"];
-
-        [info appendFormat:
-            @"zoom root: %@\n\n",
-            zoomWindow.rootViewController
-                ? NSStringFromClass(
-                    zoomWindow.rootViewController.class
-                  )
-                : @"nil"];
-
-        NSInteger index = 0;
-
-        for (UIScene *scene
-             in UIApplication.sharedApplication.connectedScenes) {
-
-            if (![scene isKindOfClass:UIWindowScene.class])
-                continue;
-
-            UIWindowScene *windowScene =
-                (UIWindowScene *)scene;
-
-            for (UIWindow *window in windowScene.windows) {
-
-                UIViewController *root =
-                    window.rootViewController;
-
-                UIViewController *top =
-                    YMTopViewController(root);
-
-                [info appendFormat:
-                    @"WINDOW %ld\n"
-                     @"class: %@\n"
-                     @"hidden: %@\n"
-                     @"level: %.1f\n"
-                     @"root: %@\n"
-                     @"top: %@\n\n",
-                     (long)index,
-                     NSStringFromClass(window.class),
-                     window.hidden ? @"YES" : @"NO",
-                     window.windowLevel,
-                     root
-                        ? NSStringFromClass(root.class)
-                        : @"nil",
-                     top
-                        ? NSStringFromClass(top.class)
-                        : @"nil"];
-
-                index++;
-            }
-        }
+        YMFindChangedViews(
+            window,
+            before,
+            window,
+            info
+        );
 
         /*
-         * 클립보드에 자동 복사
+         * YTImageZoomNode의 현재 부모 계층도 출력.
          */
-        UIPasteboard.generalPasteboard.string = info;
+        [info appendString:
+            @"=== IMAGE NODE ANCESTORS ===\n\n"];
 
-        NSLog(@"[YouMod PostImage Debug]\n%@", info);
+        UIView *current =
+            sourceView;
 
-        /*
-         * 화면에 '복사 완료' 표시
-         */
-        UIWindow *targetWindow = nil;
+        NSInteger depth = 0;
 
-        for (UIScene *scene
-             in UIApplication.sharedApplication.connectedScenes) {
+        while (current && depth < 15) {
 
-            if (![scene isKindOfClass:UIWindowScene.class])
-                continue;
+            CGRect frame =
+                [current convertRect:current.bounds
+                              toView:window];
 
-            UIWindowScene *windowScene =
-                (UIWindowScene *)scene;
+            [info appendFormat:
+                @"%ld: %@\n"
+                 @"frame: %.1f %.1f %.1f %.1f\n\n",
+                 (long)depth,
+                 NSStringFromClass(current.class),
+                 frame.origin.x,
+                 frame.origin.y,
+                 frame.size.width,
+                 frame.size.height];
 
-            for (UIWindow *window in windowScene.windows) {
-                if (!window.hidden &&
-                    window.alpha > 0 &&
-                    window.windowLevel >= targetWindow.windowLevel) {
+            current =
+                current.superview;
 
-                    targetWindow = window;
-                }
-            }
+            depth++;
         }
 
-        if (!targetWindow)
-            return;
+        UIPasteboard.generalPasteboard.string =
+            info;
 
-        UILabel *label = [[UILabel alloc] init];
+        NSLog(
+            @"[YouMod PostImage View Debug]\n%@",
+            info
+        );
+
+        UILabel *label =
+            [[UILabel alloc] init];
 
         label.text =
-            @"Post Image Debug 복사됨";
+            @"View Debug 복사됨";
 
         label.textColor =
             UIColor.whiteColor;
 
         label.backgroundColor =
             [UIColor colorWithWhite:0
-                              alpha:0.75];
+                              alpha:0.8];
 
         label.textAlignment =
             NSTextAlignmentCenter;
-
-        label.font =
-            [UIFont systemFontOfSize:14
-                             weight:UIFontWeightMedium];
 
         label.layer.cornerRadius = 8;
         label.clipsToBounds = YES;
@@ -378,20 +483,20 @@ static UIWindow *YMZoomWindowForNode(id node) {
         label.translatesAutoresizingMaskIntoConstraints =
             NO;
 
-        [targetWindow addSubview:label];
+        [window addSubview:label];
 
         [NSLayoutConstraint activateConstraints:@[
             [label.centerXAnchor
                 constraintEqualToAnchor:
-                    targetWindow.centerXAnchor],
+                    window.centerXAnchor],
 
             [label.bottomAnchor
                 constraintEqualToAnchor:
-                    targetWindow.safeAreaLayoutGuide.bottomAnchor
+                    window.safeAreaLayoutGuide.bottomAnchor
                              constant:-20],
 
             [label.widthAnchor
-                constraintEqualToConstant:220],
+                constraintEqualToConstant:200],
 
             [label.heightAnchor
                 constraintEqualToConstant:40]
