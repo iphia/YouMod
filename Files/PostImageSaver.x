@@ -3,6 +3,7 @@
 #import <objc/message.h>
 
 static __weak id YMCurrentPostImageNode;
+static const NSInteger YMPostImageButtonTag = 0x594D5049;
 
 static NSURL *YMOriginalPostImageURL(NSURL *url) {
     if (!url) return nil;
@@ -327,8 +328,8 @@ static UIWindow *YMZoomWindowForNode(id node) {
 
         YMCurrentPostImageNode = node;
 
-        const NSInteger buttonTag =
-            0x594D5049;
+        viewWithTag:YMPostImageButtonTag
+        button.tag = YMPostImageButtonTag;
 
         UIButton *existing =
             (UIButton *)[container
@@ -415,6 +416,29 @@ static UIWindow *YMZoomWindowForNode(id node) {
             [button.heightAnchor
                 constraintEqualToConstant:44.0]
         ]];
+    });
+}
+
+- (void)animateZoomEnd {
+    %orig;
+
+    YMCurrentPostImageNode = nil;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if (![scene isKindOfClass:UIWindowScene.class])
+                continue;
+
+            UIWindowScene *windowScene = (UIWindowScene *)scene;
+
+            for (UIWindow *window in windowScene.windows) {
+                UIView *button =
+                    [window viewWithTag:YMPostImageButtonTag];
+
+                if (button)
+                    [button removeFromSuperview];
+            }
+        }
     });
 }
 
