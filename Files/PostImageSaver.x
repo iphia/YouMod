@@ -328,12 +328,9 @@ static UIWindow *YMZoomWindowForNode(id node) {
 
         YMCurrentPostImageNode = node;
 
-        viewWithTag:YMPostImageButtonTag
-        button.tag = YMPostImageButtonTag;
-
         UIButton *existing =
             (UIButton *)[container
-                viewWithTag:buttonTag];
+                viewWithTag:YMPostImageButtonTag];
 
         if (existing) {
             existing.hidden = NO;
@@ -348,12 +345,12 @@ static UIWindow *YMZoomWindowForNode(id node) {
             [UIButton
                 buttonWithType:UIButtonTypeSystem];
 
-        button.tag = buttonTag;
+        button.tag = YMPostImageButtonTag;
 
         UIImageSymbolConfiguration *config =
             [UIImageSymbolConfiguration
                 configurationWithPointSize:18.0
-                                    weight:
+                            weight:
                     UIImageSymbolWeightSemibold];
 
         UIImage *icon =
