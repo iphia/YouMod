@@ -2,24 +2,49 @@
 #import <Photos/Photos.h>
 #import <objc/message.h>
 
+
+#pragma mark - Current Image
+
 static __weak id YMCurrentPostImageNode;
+static const NSInteger YMPostImageButtonTag = 0x594D5049;
+
+
+#pragma mark - Original Image URL
 
 static NSURL *YMOriginalPostImageURL(NSURL *url) {
-    if (!url) return nil;
+    if (!url)
+        return nil;
 
     NSString *text = url.absoluteString;
 
-    NSRange crop = [text rangeOfString:@"c-fcrop"];
+    if (!text.length)
+        return url;
+
+    /*
+     * 일부 YouTube 커뮤니티 이미지 URL
+     */
+    NSRange crop =
+        [text rangeOfString:@"c-fcrop"];
+
     if (crop.location != NSNotFound) {
         NSString *original =
             [[text substringToIndex:crop.location]
                 stringByAppendingString:@"nd-v1"];
 
-        return [NSURL URLWithString:original] ?: url;
+        NSURL *result =
+            [NSURL URLWithString:original];
+
+        return result ?: url;
     }
 
+    /*
+     * 일반 Google image URL
+     *
+     * ...=w123-h456-... 등을 =s0 로 변경
+     */
     NSRange slash =
-        [text rangeOfString:@"/" options:NSBackwardsSearch];
+        [text rangeOfString:@"/"
+                    options:NSBackwardsSearch];
 
     if (slash.location == NSNotFound)
         return url;
@@ -29,7 +54,8 @@ static NSURL *YMOriginalPostImageURL(NSURL *url) {
                     options:NSBackwardsSearch
                       range:NSMakeRange(
                           slash.location,
-                          text.length - slash.location)];
+                          text.length - slash.location
+                      )];
 
     if (eq.location == NSNotFound)
         return url;
@@ -38,55 +64,90 @@ static NSURL *YMOriginalPostImageURL(NSURL *url) {
         [[text substringToIndex:eq.location]
             stringByAppendingString:@"=s0"];
 
-    return [NSURL URLWithString:original] ?: url;
+    NSURL *result =
+        [NSURL URLWithString:original];
+
+    return result ?: url;
 }
 
-static void YMSavePostImageData(NSData *data) {
-    if (!data.length) return;
 
-    void (^save)(void) = ^{
+#pragma mark - Save To Photos
+
+static void YMSavePostImageData(NSData *data) {
+    if (!data.length)
+        return;
+
+    void (^saveBlock)(void) = ^{
         [[PHPhotoLibrary sharedPhotoLibrary]
             performChanges:^{
-                PHAssetCreationRequest *request =
-                    [PHAssetCreationRequest creationRequestForAsset];
 
-                [request addResourceWithType:PHAssetResourceTypePhoto
-                                        data:data
-                                     options:nil];
+                PHAssetCreationRequest *request =
+                    [PHAssetCreationRequest
+                        creationRequestForAsset];
+
+                [request
+                    addResourceWithType:
+                        PHAssetResourceTypePhoto
+                                  data:data
+                               options:nil];
+
             }
-            completionHandler:^(BOOL success, NSError *error) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    if (success) {
-                        NSLog(@"[YouMod] Post image saved");
-                    } else {
-                        NSLog(@"[YouMod] Post image save error: %@", error);
-                    }
-                });
+            completionHandler:^(BOOL success,
+                                NSError *error) {
+
+                if (success) {
+                    NSLog(
+                        @"[YouMod] Post image saved"
+                    );
+                } else {
+                    NSLog(
+                        @"[YouMod] Post image save error: %@",
+                        error
+                    );
+                }
             }];
     };
 
     if (@available(iOS 14.0, *)) {
+
         [PHPhotoLibrary
-            requestAuthorizationForAccessLevel:PHAccessLevelAddOnly
+            requestAuthorizationForAccessLevel:
+                PHAccessLevelAddOnly
             handler:^(PHAuthorizationStatus status) {
-                if (status == PHAuthorizationStatusAuthorized ||
-                    status == PHAuthorizationStatusLimited) {
-                    save();
+
+                if (status ==
+                        PHAuthorizationStatusAuthorized ||
+                    status ==
+                        PHAuthorizationStatusLimited) {
+
+                    saveBlock();
                 }
             }];
+
     } else {
+
         [PHPhotoLibrary
-            requestAuthorization:^(PHAuthorizationStatus status) {
-                if (status == PHAuthorizationStatusAuthorized)
-                    save();
+            requestAuthorization:^(
+                PHAuthorizationStatus status
+            ) {
+
+                if (status ==
+                    PHAuthorizationStatusAuthorized) {
+
+                    saveBlock();
+                }
             }];
     }
 }
+
+
+#pragma mark - Download Button Target
 
 @interface YMPostImageSaveTarget : NSObject
 + (instancetype)shared;
 - (void)saveTapped:(UIButton *)button;
 @end
+
 
 @implementation YMPostImageSaveTarget
 
@@ -95,205 +156,265 @@ static void YMSavePostImageData(NSData *data) {
     static dispatch_once_t onceToken;
 
     dispatch_once(&onceToken, ^{
-        target = [YMPostImageSaveTarget new];
+        target =
+            [[YMPostImageSaveTarget alloc] init];
     });
 
     return target;
 }
 
+
 - (void)saveTapped:(UIButton *)button {
-    id node = YMCurrentPostImageNode;
+    id node =
+        YMCurrentPostImageNode;
 
-    if (!node) return;
-
-    SEL urlSelector = NSSelectorFromString(@"URL");
-
-    if (![node respondsToSelector:urlSelector])
+    if (!node)
         return;
 
+    SEL urlSelector =
+        NSSelectorFromString(@"URL");
+
+    if (![node
+        respondsToSelector:urlSelector]) {
+        return;
+    }
+
     NSURL *url =
-        ((id (*)(id, SEL))objc_msgSend)(node, urlSelector);
+        ((id (*)(id, SEL))objc_msgSend)(
+            node,
+            urlSelector
+        );
 
-    url = YMOriginalPostImageURL(url);
+    url =
+        YMOriginalPostImageURL(url);
 
-    if (!url) return;
+    if (!url)
+        return;
 
     button.enabled = NO;
 
-    [[[NSURLSession sharedSession]
-        dataTaskWithURL:url
-        completionHandler:^(NSData *data,
-                            NSURLResponse *response,
-                            NSError *error) {
+    NSURLSessionDataTask *task =
+        [[NSURLSession sharedSession]
+            dataTaskWithURL:url
+            completionHandler:^(
+                NSData *data,
+                NSURLResponse *response,
+                NSError *error
+            ) {
 
-            dispatch_async(dispatch_get_main_queue(), ^{
-                button.enabled = YES;
-            });
+                dispatch_async(
+                    dispatch_get_main_queue(),
+                    ^{
+                        button.enabled = YES;
+                    }
+                );
 
-            if (data.length)
+                if (error) {
+                    NSLog(
+                        @"[YouMod] Post image download error: %@",
+                        error
+                    );
+
+                    return;
+                }
+
+                if (!data.length)
+                    return;
+
                 YMSavePostImageData(data);
+            }];
 
-        }] resume];
+    [task resume];
 }
 
 @end
 
-static void YMCollectViewStates(
+
+#pragma mark - View Search
+
+static UIView *YMFindVisibleSubviewOfClass(
     UIView *view,
-    NSMutableDictionary<NSValue *, NSDictionary *> *states
+    Class targetClass
 ) {
-    if (!view)
-        return;
+    if (!view || !targetClass)
+        return nil;
 
-    NSValue *key =
-        [NSValue valueWithPointer:(__bridge const void *)view];
+    /*
+     * 현재 화면에 실제로 표시 중인 것만 인정
+     */
+    if ([view isKindOfClass:targetClass] &&
+        !view.hidden &&
+        view.alpha > 0.01 &&
+        view.window) {
 
-    CGRect frame = CGRectZero;
-
-    if (view.window) {
-        frame =
-            [view convertRect:view.bounds
-                       toView:view.window];
-    }
-
-    states[key] = @{
-        @"hidden": @(view.hidden),
-        @"alpha": @(view.alpha),
-        @"frame": [NSValue valueWithCGRect:frame]
-    };
-
-    for (UIView *subview in view.subviews) {
-        YMCollectViewStates(subview, states);
-    }
-}
-
-
-static void YMFindChangedViews(
-    UIView *view,
-    NSDictionary<NSValue *, NSDictionary *> *before,
-    UIWindow *window,
-    NSMutableString *info
-) {
-    if (!view || !window)
-        return;
-
-    NSValue *key =
-        [NSValue valueWithPointer:(__bridge const void *)view];
-
-    NSDictionary *oldState =
-        before[key];
-
-    CGRect frame =
-        [view convertRect:view.bounds
-                   toView:window];
-
-    CGFloat windowArea =
-        window.bounds.size.width *
-        window.bounds.size.height;
-
-    CGFloat area =
-        MAX(frame.size.width, 0) *
-        MAX(frame.size.height, 0);
-
-    CGFloat ratio =
-        windowArea > 0 ? area / windowArea : 0;
-
-    BOOL isNew =
-        oldState == nil;
-
-    BOOL becameVisible = NO;
-    BOOL becameLarge = NO;
-
-    if (oldState) {
-        BOOL oldHidden =
-            [oldState[@"hidden"] boolValue];
-
-        CGFloat oldAlpha =
-            [oldState[@"alpha"] doubleValue];
-
-        CGRect oldFrame =
-            [oldState[@"frame"] CGRectValue];
-
-        CGFloat oldArea =
-            MAX(oldFrame.size.width, 0) *
-            MAX(oldFrame.size.height, 0);
-
-        becameVisible =
-            (oldHidden && !view.hidden) ||
-            (oldAlpha < 0.05 && view.alpha >= 0.05);
-
-        if (oldArea > 0) {
-            becameLarge =
-                area > oldArea * 3.0;
-        }
+        return view;
     }
 
     /*
-     * 화면의 10% 이상을 차지하는 뷰 중
-     * 새로 생겼거나 크게 변한 것만 출력.
+     * 위에 올라온 뷰부터 찾기 위해 역순 검색
      */
-    if (!view.hidden &&
-        view.alpha > 0.05 &&
-        ratio >= 0.10 &&
-        (isNew || becameVisible || becameLarge)) {
+    for (UIView *subview
+         in [view.subviews reverseObjectEnumerator]) {
 
-        NSString *superName =
-            view.superview
-                ? NSStringFromClass(view.superview.class)
-                : @"nil";
+        UIView *found =
+            YMFindVisibleSubviewOfClass(
+                subview,
+                targetClass
+            );
 
-        [info appendFormat:
-            @"VIEW\n"
-             @"class: %@\n"
-             @"super: %@\n"
-             @"new: %@\n"
-             @"visibleChanged: %@\n"
-             @"largeChanged: %@\n"
-             @"frame: %.1f %.1f %.1f %.1f\n"
-             @"screenRatio: %.2f\n"
-             @"subviews: %lu\n\n",
-             NSStringFromClass(view.class),
-             superName,
-             isNew ? @"YES" : @"NO",
-             becameVisible ? @"YES" : @"NO",
-             becameLarge ? @"YES" : @"NO",
-             frame.origin.x,
-             frame.origin.y,
-             frame.size.width,
-             frame.size.height,
-             ratio,
-             (unsigned long)view.subviews.count];
+        if (found)
+            return found;
     }
 
-    for (UIView *subview in view.subviews) {
-        YMFindChangedViews(
-            subview,
-            before,
-            window,
-            info
-        );
-    }
+    return nil;
 }
+
+
+static UIView *YMFindAncestorOfClass(
+    UIView *view,
+    Class targetClass
+) {
+    UIView *current =
+        view;
+
+    while (current) {
+
+        if ([current
+            isKindOfClass:targetClass]) {
+
+            return current;
+        }
+
+        current =
+            current.superview;
+    }
+
+    return nil;
+}
+
+
+#pragma mark - Button
+
+static void YMAddPostImageSaveButton(
+    UIView *viewerRoot,
+    id node
+) {
+    if (!viewerRoot || !node)
+        return;
+
+    YMCurrentPostImageNode =
+        node;
+
+    UIButton *existing =
+        (UIButton *)[viewerRoot
+            viewWithTag:
+                YMPostImageButtonTag];
+
+    if (existing) {
+        existing.hidden = NO;
+        existing.enabled = YES;
+
+        [viewerRoot
+            bringSubviewToFront:existing];
+
+        return;
+    }
+
+    UIButton *button =
+        [UIButton
+            buttonWithType:
+                UIButtonTypeSystem];
+
+    button.tag =
+        YMPostImageButtonTag;
+
+    UIImageSymbolConfiguration *config =
+        [UIImageSymbolConfiguration
+            configurationWithPointSize:18.0
+                                weight:
+                UIImageSymbolWeightSemibold];
+
+    UIImage *icon =
+        [UIImage
+            systemImageNamed:
+                @"square.and.arrow.down"
+            withConfiguration:config];
+
+    [button
+        setImage:icon
+        forState:UIControlStateNormal];
+
+    button.tintColor =
+        UIColor.whiteColor;
+
+    button.layer.shadowColor =
+        UIColor.blackColor.CGColor;
+
+    button.layer.shadowOpacity =
+        0.65;
+
+    button.layer.shadowRadius =
+        3.0;
+
+    button.layer.shadowOffset =
+        CGSizeZero;
+
+    button.translatesAutoresizingMaskIntoConstraints =
+        NO;
+
+    [button
+        addTarget:
+            [YMPostImageSaveTarget shared]
+           action:
+            @selector(saveTapped:)
+ forControlEvents:
+            UIControlEventTouchUpInside];
+
+    [viewerRoot
+        addSubview:button];
+
+    [viewerRoot
+        bringSubviewToFront:button];
+
+    [NSLayoutConstraint
+        activateConstraints:@[
+
+        [button.leadingAnchor
+            constraintEqualToAnchor:
+                viewerRoot.leadingAnchor
+                         constant:12.0],
+
+        [button.topAnchor
+            constraintEqualToAnchor:
+                viewerRoot.safeAreaLayoutGuide.topAnchor
+                         constant:60.0],
+
+        [button.widthAnchor
+            constraintEqualToConstant:44.0],
+
+        [button.heightAnchor
+            constraintEqualToConstant:44.0]
+    ]];
+}
+
+
+#pragma mark - YTImageZoomNode
 
 %hook YTImageZoomNode
 
-- (void)didEnterVisibleState {
-    /*
-     * 피드에 게시물이 보였다는 이유만으로
-     * 버튼을 만들면 안 됨.
-     */
-    %orig;
-}
-
 - (void)handleTapGesture:(id)gesture {
-    id node = (id)self;
+    id node =
+        (id)self;
 
     SEL viewSelector =
         NSSelectorFromString(@"view");
 
-    UIView *sourceView = nil;
+    UIView *sourceView =
+        nil;
 
-    if ([node respondsToSelector:viewSelector]) {
+    if ([node
+        respondsToSelector:viewSelector]) {
+
         sourceView =
             ((id (*)(id, SEL))objc_msgSend)(
                 node,
@@ -304,139 +425,95 @@ static void YMFindChangedViews(
     UIWindow *window =
         sourceView.window;
 
-    if (!window) {
-        %orig;
-        return;
-    }
-
     /*
-     * 사진을 열기 직전의 전체 view 상태 저장.
+     * YouTube 원래 이미지 열기 동작
      */
-    NSMutableDictionary *before =
-        [NSMutableDictionary dictionary];
-
-    YMCollectViewStates(
-        window,
-        before
-    );
-
     %orig;
 
+    if (!window)
+        return;
+
     /*
-     * 새 이미지 UI가 만들어질 시간을 기다림.
+     * 로그인 후 새 게시물 뷰어는
+     *
+     * YTReelWatchRootView
+     *   └ YTReelContainerView
+     *       └ YTPostsContentPresenterView
+     *
+     * 구조로 생성됨.
      */
     dispatch_after(
         dispatch_time(
             DISPATCH_TIME_NOW,
-            (int64_t)(0.5 * NSEC_PER_SEC)
+            (int64_t)(
+                0.25 *
+                NSEC_PER_SEC
+            )
         ),
-        dispatch_get_main_queue(), ^{
+        dispatch_get_main_queue(),
+        ^{
 
-        NSMutableString *info =
-            [NSMutableString string];
+            Class postsPresenterClass =
+                NSClassFromString(
+                    @"YTPostsContentPresenterView"
+                );
 
-        [info appendString:
-            @"=== NEW / CHANGED LARGE VIEWS ===\n\n"];
+            Class reelRootClass =
+                NSClassFromString(
+                    @"YTReelWatchRootView"
+                );
 
-        YMFindChangedViews(
-            window,
-            before,
-            window,
-            info
-        );
+            if (!postsPresenterClass ||
+                !reelRootClass) {
 
-        /*
-         * YTImageZoomNode의 현재 부모 계층도 출력.
-         */
-        [info appendString:
-            @"=== IMAGE NODE ANCESTORS ===\n\n"];
+                return;
+            }
 
-        UIView *current =
-            sourceView;
+            /*
+             * 현재 화면에서 실제로 보이는
+             * 게시물 presenter 탐색
+             */
+            UIView *postsPresenter =
+                YMFindVisibleSubviewOfClass(
+                    window,
+                    postsPresenterClass
+                );
 
-        NSInteger depth = 0;
+            if (!postsPresenter)
+                return;
 
-        while (current && depth < 15) {
+            /*
+             * 게시물 presenter의 부모를 따라 올라가서
+             * 전체화면 뷰어 루트 찾기
+             */
+            UIView *viewerRoot =
+                YMFindAncestorOfClass(
+                    postsPresenter,
+                    reelRootClass
+                );
 
-            CGRect frame =
-                [current convertRect:current.bounds
-                              toView:window];
+            if (!viewerRoot)
+                return;
 
-            [info appendFormat:
-                @"%ld: %@\n"
-                 @"frame: %.1f %.1f %.1f %.1f\n\n",
-                 (long)depth,
-                 NSStringFromClass(current.class),
-                 frame.origin.x,
-                 frame.origin.y,
-                 frame.size.width,
-                 frame.size.height];
+            if (viewerRoot.hidden ||
+                viewerRoot.alpha <= 0.01 ||
+                !viewerRoot.window) {
 
-            current =
-                current.superview;
+                return;
+            }
 
-            depth++;
+            /*
+             * 버튼은 YTReelWatchRootView 안에 붙임.
+             *
+             * 따라서 게시물 뷰어에서 빠져나오면
+             * viewerRoot와 함께 버튼도 사라짐.
+             */
+            YMAddPostImageSaveButton(
+                viewerRoot,
+                node
+            );
         }
-
-        UIPasteboard.generalPasteboard.string =
-            info;
-
-        NSLog(
-            @"[YouMod PostImage View Debug]\n%@",
-            info
-        );
-
-        UILabel *label =
-            [[UILabel alloc] init];
-
-        label.text =
-            @"View Debug 복사됨";
-
-        label.textColor =
-            UIColor.whiteColor;
-
-        label.backgroundColor =
-            [UIColor colorWithWhite:0
-                              alpha:0.8];
-
-        label.textAlignment =
-            NSTextAlignmentCenter;
-
-        label.layer.cornerRadius = 8;
-        label.clipsToBounds = YES;
-
-        label.translatesAutoresizingMaskIntoConstraints =
-            NO;
-
-        [window addSubview:label];
-
-        [NSLayoutConstraint activateConstraints:@[
-            [label.centerXAnchor
-                constraintEqualToAnchor:
-                    window.centerXAnchor],
-
-            [label.bottomAnchor
-                constraintEqualToAnchor:
-                    window.safeAreaLayoutGuide.bottomAnchor
-                             constant:-20],
-
-            [label.widthAnchor
-                constraintEqualToConstant:200],
-
-            [label.heightAnchor
-                constraintEqualToConstant:40]
-        ]];
-
-        dispatch_after(
-            dispatch_time(
-                DISPATCH_TIME_NOW,
-                (int64_t)(2.0 * NSEC_PER_SEC)
-            ),
-            dispatch_get_main_queue(), ^{
-
-            [label removeFromSuperview];
-        });
-    });
+    );
 }
 
 %end
