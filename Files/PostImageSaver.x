@@ -226,7 +226,6 @@ static UIWindow *YMZoomWindowForNode(id node) {
     %orig;
 }
 
-
 - (void)handleTapGesture:(id)gesture {
     id node = (id)self;
 
@@ -242,8 +241,6 @@ static UIWindow *YMZoomWindowForNode(id node) {
             );
     }
 
-    UIWindow *sourceWindow = sourceView.window;
-
     UIViewController *beforeController =
         YMOwningController(sourceView);
 
@@ -252,111 +249,164 @@ static UIWindow *YMZoomWindowForNode(id node) {
     dispatch_after(
         dispatch_time(
             DISPATCH_TIME_NOW,
-            (int64_t)(0.3 * NSEC_PER_SEC)
+            (int64_t)(0.5 * NSEC_PER_SEC)
         ),
         dispatch_get_main_queue(), ^{
 
-        UIViewController *top = nil;
+        NSMutableString *info =
+            [NSMutableString string];
 
-        if (sourceWindow) {
-            top =
-                YMTopViewController(
-                    sourceWindow.rootViewController
-                );
-        }
+        [info appendFormat:
+            @"source VC: %@\n",
+            beforeController
+                ? NSStringFromClass(beforeController.class)
+                : @"nil"];
 
         UIWindow *zoomWindow =
             YMZoomWindowForNode(node);
 
-        NSString *beforeName =
-            beforeController
-                ? NSStringFromClass(beforeController.class)
-                : @"nil";
-
-        NSString *topName =
-            top
-                ? NSStringFromClass(top.class)
-                : @"nil";
-
-        NSString *zoomWindowName =
+        [info appendFormat:
+            @"zoomWindow: %@\n",
             zoomWindow
                 ? NSStringFromClass(zoomWindow.class)
-                : @"nil";
+                : @"nil"];
 
-        NSString *zoomRootName =
+        [info appendFormat:
+            @"zoom root: %@\n\n",
             zoomWindow.rootViewController
                 ? NSStringFromClass(
                     zoomWindow.rootViewController.class
                   )
-                : @"nil";
+                : @"nil"];
 
-        NSString *message =
-            [NSString stringWithFormat:
-                @"before VC:\n%@\n\n"
-                 "top VC:\n%@\n\n"
-                 "zoomWindow:\n%@\n\n"
-                 "zoom root VC:\n%@",
-                 beforeName,
-                 topName,
-                 zoomWindowName,
-                 zoomRootName];
+        NSInteger index = 0;
 
-        NSLog(@"[YouMod PostImage Debug]\n%@", message);
+        for (UIScene *scene
+             in UIApplication.sharedApplication.connectedScenes) {
 
-        UIViewController *presenter =
-            top ?: beforeController;
-
-        if (!presenter)
-            return;
-
-        UIAlertController *alert =
-            [UIAlertController
-                alertControllerWithTitle:@"Post Image Debug"
-                                 message:message
-                          preferredStyle:UIAlertControllerStyleAlert];
-
-        [alert addAction:
-            [UIAlertAction
-                actionWithTitle:@"복사"
-                         style:UIAlertActionStyleDefault
-                       handler:^(__unused UIAlertAction *action) {
-            UIPasteboard.generalPasteboard.string =
-                message;
-        }]];
-
-        [alert addAction:
-            [UIAlertAction
-                actionWithTitle:@"닫기"
-                         style:UIAlertActionStyleCancel
-                       handler:nil]];
-
-        [presenter
-            presentViewController:alert
-                         animated:YES
-                       completion:nil];
-    });
-}
-
-- (void)animateZoomEnd {
-    %orig;
-
-    YMCurrentPostImageNode = nil;
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
             if (![scene isKindOfClass:UIWindowScene.class])
                 continue;
 
-            UIWindowScene *windowScene = (UIWindowScene *)scene;
+            UIWindowScene *windowScene =
+                (UIWindowScene *)scene;
 
             for (UIWindow *window in windowScene.windows) {
-                UIView *button =
-                    [window viewWithTag:YMPostImageButtonTag];
 
-                if (button)
-                    [button removeFromSuperview];
+                UIViewController *root =
+                    window.rootViewController;
+
+                UIViewController *top =
+                    YMTopViewController(root);
+
+                [info appendFormat:
+                    @"WINDOW %ld\n"
+                     @"class: %@\n"
+                     @"hidden: %@\n"
+                     @"level: %.1f\n"
+                     @"root: %@\n"
+                     @"top: %@\n\n",
+                     (long)index,
+                     NSStringFromClass(window.class),
+                     window.hidden ? @"YES" : @"NO",
+                     window.windowLevel,
+                     root
+                        ? NSStringFromClass(root.class)
+                        : @"nil",
+                     top
+                        ? NSStringFromClass(top.class)
+                        : @"nil"];
+
+                index++;
             }
         }
+
+        /*
+         * 클립보드에 자동 복사
+         */
+        UIPasteboard.generalPasteboard.string = info;
+
+        NSLog(@"[YouMod PostImage Debug]\n%@", info);
+
+        /*
+         * 화면에 '복사 완료' 표시
+         */
+        UIWindow *targetWindow = nil;
+
+        for (UIScene *scene
+             in UIApplication.sharedApplication.connectedScenes) {
+
+            if (![scene isKindOfClass:UIWindowScene.class])
+                continue;
+
+            UIWindowScene *windowScene =
+                (UIWindowScene *)scene;
+
+            for (UIWindow *window in windowScene.windows) {
+                if (!window.hidden &&
+                    window.alpha > 0 &&
+                    window.windowLevel >= targetWindow.windowLevel) {
+
+                    targetWindow = window;
+                }
+            }
+        }
+
+        if (!targetWindow)
+            return;
+
+        UILabel *label = [[UILabel alloc] init];
+
+        label.text =
+            @"Post Image Debug 복사됨";
+
+        label.textColor =
+            UIColor.whiteColor;
+
+        label.backgroundColor =
+            [UIColor colorWithWhite:0
+                              alpha:0.75];
+
+        label.textAlignment =
+            NSTextAlignmentCenter;
+
+        label.font =
+            [UIFont systemFontOfSize:14
+                             weight:UIFontWeightMedium];
+
+        label.layer.cornerRadius = 8;
+        label.clipsToBounds = YES;
+
+        label.translatesAutoresizingMaskIntoConstraints =
+            NO;
+
+        [targetWindow addSubview:label];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [label.centerXAnchor
+                constraintEqualToAnchor:
+                    targetWindow.centerXAnchor],
+
+            [label.bottomAnchor
+                constraintEqualToAnchor:
+                    targetWindow.safeAreaLayoutGuide.bottomAnchor
+                             constant:-20],
+
+            [label.widthAnchor
+                constraintEqualToConstant:220],
+
+            [label.heightAnchor
+                constraintEqualToConstant:40]
+        ]];
+
+        dispatch_after(
+            dispatch_time(
+                DISPATCH_TIME_NOW,
+                (int64_t)(2.0 * NSEC_PER_SEC)
+            ),
+            dispatch_get_main_queue(), ^{
+
+            [label removeFromSuperview];
+        });
     });
 }
 
