@@ -141,6 +141,22 @@ static void YMSavePostImageData(NSData *data) {
 static const NSInteger YMPostImageButtonTag = 0x594D5049;
 
 
+#pragma mark - Common
+
+static UIViewController *YMOwningController(UIView *view) {
+    UIResponder *responder = view;
+
+    while (responder) {
+        if ([responder isKindOfClass:UIViewController.class])
+            return (UIViewController *)responder;
+
+        responder = responder.nextResponder;
+    }
+
+    return nil;
+}
+
+
 static UIView *YMFindVisibleSubviewOfClass(
     UIView *view,
     Class targetClass
@@ -188,21 +204,30 @@ static UIView *YMFindAncestorOfClass(
 }
 
 
+#pragma mark - Button
+
 static void YMAddPostImageButton(
-    UIView *viewerRoot
+    UIView *container,
+    id node,
+    CGFloat topOffset
 ) {
-    if (!viewerRoot)
+    if (!container || !node)
         return;
 
+    /*
+     * 원래 다운로드 방식 그대로
+     */
+    YMCurrentPostImageNode = node;
+
     UIButton *existing =
-        (UIButton *)[viewerRoot
+        (UIButton *)[container
             viewWithTag:YMPostImageButtonTag];
 
     if (existing) {
         existing.hidden = NO;
         existing.enabled = YES;
 
-        [viewerRoot bringSubviewToFront:existing];
+        [container bringSubviewToFront:existing];
         return;
     }
 
@@ -240,19 +265,18 @@ static void YMAddPostImageButton(
            action:@selector(saveTapped:)
  forControlEvents:UIControlEventTouchUpInside];
 
-    [viewerRoot addSubview:button];
-    [viewerRoot bringSubviewToFront:button];
+    [container addSubview:button];
+    [container bringSubviewToFront:button];
 
     [NSLayoutConstraint activateConstraints:@[
         [button.leadingAnchor
-            constraintEqualToAnchor:
-                viewerRoot.leadingAnchor
+            constraintEqualToAnchor:container.leadingAnchor
                          constant:12.0],
 
         [button.topAnchor
             constraintEqualToAnchor:
-                viewerRoot.safeAreaLayoutGuide.topAnchor
-                         constant:60.0],
+                container.safeAreaLayoutGuide.topAnchor
+                         constant:topOffset],
 
         [button.widthAnchor
             constraintEqualToConstant:44.0],
@@ -263,7 +287,9 @@ static void YMAddPostImageButton(
 }
 
 
-static void YMTryAttachPostImageButton(
+#pragma mark - New UI
+
+static void YMTryAttachNewPostImageButton(
     UIWindow *window,
     id node,
     NSInteger attempt
@@ -293,8 +319,163 @@ static void YMTryAttachPostImageButton(
         );
 
     if (postsPresenter) {
+
         UIView *viewerRoot =
             YMFindAncestorOfClass(
+                postsPresenter,
+                reelRootClass
+            );
+
+        if (viewerRoot &&
+            !viewerRoot.hidden &&
+            viewerRoot.alpha > 0.01 &&
+            viewerRoot.window) {
+
+            /*
+             * 로그인 상태의 새 게시물 UI
+             */
+            YMAddPostImageButton(
+                viewerRoot,
+                node,
+                60.0
+            );
+
+            return;
+        }
+    }
+
+    /*
+     * 생성 타이밍 차이 대비
+     */
+    if (attempt >= 6)
+        return;
+
+    dispatch_after(
+        dispatch_time(
+            DISPATCH_TIME_NOW,
+            (int64_t)(0.15 * NSEC_PER_SEC)
+        ),
+        dispatch_get_main_queue(), ^{
+
+        YMTryAttachNewPostImageButton(
+            window,
+            node,
+            attempt + 1
+        );
+    });
+}
+
+
+#pragma mark - Hooks
+
+%hook YTImageZoomNode
+
+
+/*
+ * 구형 UI
+ *
+ * 로그아웃 상태 등에서 기존 YTKACE 방식 사용.
+ */
+- (void)didEnterVisibleState {
+    %orig;
+
+    id node = (id)self;
+
+    dispatch_async(
+        dispatch_get_main_queue(), ^{
+
+        SEL viewSelector =
+            NSSelectorFromString(@"view");
+
+        if (![node respondsToSelector:viewSelector])
+            return;
+
+        UIView *view =
+            ((id (*)(id, SEL))objc_msgSend)(
+                node,
+                viewSelector
+            );
+
+        if (!view.window)
+            return;
+
+        UIViewController *owner =
+            YMOwningController(view);
+
+        if (!owner || !owner.view)
+            return;
+
+        Class legacyViewer =
+            NSClassFromString(
+                @"YTInterstitialElementsViewControllerImpl"
+            );
+
+        /*
+         * 이 조건 때문에 메인 피드에는 버튼이 안 뜸.
+         */
+        if (!legacyViewer ||
+            ![owner isKindOfClass:legacyViewer]) {
+
+            return;
+        }
+
+        YMAddPostImageButton(
+            owner.view,
+            node,
+            8.0
+        );
+    });
+}
+
+
+/*
+ * 신형 UI
+ *
+ * 로그인 상태의 새 게시물 뷰어.
+ */
+- (void)handleTapGesture:(id)gesture {
+    id node = (id)self;
+
+    SEL viewSelector =
+        NSSelectorFromString(@"view");
+
+    UIView *view = nil;
+
+    if ([node respondsToSelector:viewSelector]) {
+        view =
+            ((id (*)(id, SEL))objc_msgSend)(
+                node,
+                viewSelector
+            );
+    }
+
+    UIWindow *window =
+        view.window;
+
+    /*
+     * YouTube 원래 동작
+     */
+    %orig;
+
+    if (!window)
+        return;
+
+    dispatch_after(
+        dispatch_time(
+            DISPATCH_TIME_NOW,
+            (int64_t)(0.10 * NSEC_PER_SEC)
+        ),
+        dispatch_get_main_queue(), ^{
+
+        YMTryAttachNewPostImageButton(
+            window,
+            node,
+            0
+        );
+    });
+}
+
+%end    YMFindAncestorOfClass(
                 postsPresenter,
                 reelRootClass
             );
