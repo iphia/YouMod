@@ -153,96 +153,252 @@ static UIViewController *YMOwningController(UIView *view) {
 }
 
 
+static UIViewController *YMTopViewController(UIViewController *controller) {
+    if (!controller)
+        return nil;
+
+    UIViewController *current = controller;
+
+    while (YES) {
+        if (current.presentedViewController) {
+            current = current.presentedViewController;
+            continue;
+        }
+
+        if ([current isKindOfClass:UINavigationController.class]) {
+            UIViewController *visible =
+                ((UINavigationController *)current).visibleViewController;
+
+            if (visible && visible != current) {
+                current = visible;
+                continue;
+            }
+        }
+
+        if ([current isKindOfClass:UITabBarController.class]) {
+            UIViewController *selected =
+                ((UITabBarController *)current).selectedViewController;
+
+            if (selected && selected != current) {
+                current = selected;
+                continue;
+            }
+        }
+
+        break;
+    }
+
+    return current;
+}
+
+
+static UIWindow *YMZoomWindowForNode(id node) {
+    if (!node)
+        return nil;
+
+    UIWindow *window = nil;
+
+    /*
+     * YTImageZoomNode 자체가 사용하는 확대 이미지용 window.
+     * 기존 UI에서는 이게 가장 정확함.
+     */
+    @try {
+        id value = [node valueForKey:@"_zoomWindow"];
+
+        if ([value isKindOfClass:UIWindow.class])
+            window = value;
+    }
+    @catch (__unused NSException *exception) {
+    }
+
+    return window;
+}
+
+
 %hook YTImageZoomNode
 
 - (void)didEnterVisibleState {
+    /*
+     * 피드에 게시물이 보였다는 이유만으로
+     * 버튼을 만들면 안 됨.
+     */
     %orig;
+}
 
+
+- (void)handleTapGesture:(id)gesture {
     id node = (id)self;
-    YMCurrentPostImageNode = node;
 
-    dispatch_async(dispatch_get_main_queue(), ^{
-        SEL viewSelector = NSSelectorFromString(@"view");
+    SEL viewSelector = NSSelectorFromString(@"view");
 
-        if (![node respondsToSelector:viewSelector])
-            return;
+    UIView *sourceView = nil;
 
-        UIView *view =
+    if ([node respondsToSelector:viewSelector]) {
+        sourceView =
             ((id (*)(id, SEL))objc_msgSend)(
                 node,
-                viewSelector);
+                viewSelector
+            );
+    }
 
-        if (!view || !view.window)
-            return;
+    UIWindow *sourceWindow = sourceView.window;
 
-        UIViewController *controller =
-            YMOwningController(view);
+    UIViewController *beforeController =
+        YMOwningController(sourceView);
+
+    /*
+     * 먼저 YouTube가 원래 하던 이미지 열기를 실행.
+     */
+    %orig;
+
+    /*
+     * 뷰어 전환/zoom window 생성까지 아주 잠깐 기다림.
+     */
+    dispatch_after(
+        dispatch_time(
+            DISPATCH_TIME_NOW,
+            (int64_t)(0.15 * NSEC_PER_SEC)
+        ),
+        dispatch_get_main_queue(), ^{
+
+        UIView *container = nil;
 
         /*
-         * 예전에는 여기서
-         * YTInterstitialElementsViewControllerImpl인지 검사했는데,
-         * A/B UI 대응을 위해 제거.
+         * 1. 기존 YouTube 이미지 확대 UI
          */
+        UIWindow *zoomWindow =
+            YMZoomWindowForNode(node);
 
-        UIView *container = controller.view;
+        if (zoomWindow &&
+            !zoomWindow.hidden &&
+            zoomWindow.alpha > 0.0) {
+
+            container = zoomWindow;
+        }
 
         /*
-         * 컨트롤러를 못 찾더라도 window에 붙여서
-         * 최대한 동작하도록 fallback.
+         * 2. 로그인 계정의 새로운 A/B 이미지 뷰어
+         *
+         * 별도 ViewController로 전환된 경우
+         * 현재 화면 최상단 VC에 버튼을 붙임.
          */
-        if (!container)
-            container = view.window;
+        if (!container && sourceWindow) {
 
+            UIViewController *top =
+                YMTopViewController(
+                    sourceWindow.rootViewController
+                );
+
+            if (top &&
+                top.view.window &&
+                top != beforeController) {
+
+                container = top.view;
+            }
+        }
+
+        /*
+         * 3. 기존 YTKACE 방식의 뷰어도 지원.
+         */
+        if (!container && beforeController) {
+
+            Class legacyViewer =
+                NSClassFromString(
+                    @"YTInterstitialElementsViewControllerImpl"
+                );
+
+            if (legacyViewer &&
+                [beforeController
+                    isKindOfClass:legacyViewer]) {
+
+                container =
+                    beforeController.view;
+            }
+        }
+
+        /*
+         * 뷰어가 실제로 열린 걸 확인하지 못했으면
+         * 아무것도 만들지 않음.
+         *
+         * 따라서 메인 피드에는 버튼이 생기지 않음.
+         */
         if (!container)
             return;
 
-        const NSInteger buttonTag = 0x594D5049;
+        YMCurrentPostImageNode = node;
+
+        const NSInteger buttonTag =
+            0x594D5049;
 
         UIButton *existing =
-            (UIButton *)[container viewWithTag:buttonTag];
+            (UIButton *)[container
+                viewWithTag:buttonTag];
 
         if (existing) {
             existing.hidden = NO;
-            [container bringSubviewToFront:existing];
+
+            [container
+                bringSubviewToFront:existing];
+
             return;
         }
 
         UIButton *button =
-            [UIButton buttonWithType:UIButtonTypeSystem];
+            [UIButton
+                buttonWithType:UIButtonTypeSystem];
 
         button.tag = buttonTag;
 
         UIImageSymbolConfiguration *config =
             [UIImageSymbolConfiguration
                 configurationWithPointSize:18.0
-                                    weight:UIImageSymbolWeightSemibold];
+                                    weight:
+                    UIImageSymbolWeightSemibold];
 
         UIImage *icon =
             [UIImage
-                systemImageNamed:@"square.and.arrow.down"
+                systemImageNamed:
+                    @"square.and.arrow.down"
                 withConfiguration:config];
 
-        [button setImage:icon
-                forState:UIControlStateNormal];
+        [button
+            setImage:icon
+            forState:UIControlStateNormal];
 
-        button.tintColor = UIColor.whiteColor;
+        button.tintColor =
+            UIColor.whiteColor;
 
-        button.layer.shadowColor = UIColor.blackColor.CGColor;
-        button.layer.shadowOpacity = 0.6;
-        button.layer.shadowRadius = 3.0;
-        button.layer.shadowOffset = CGSizeZero;
+        button.layer.shadowColor =
+            UIColor.blackColor.CGColor;
 
-        button.translatesAutoresizingMaskIntoConstraints = NO;
+        button.layer.shadowOpacity =
+            0.6;
+
+        button.layer.shadowRadius =
+            3.0;
+
+        button.layer.shadowOffset =
+            CGSizeZero;
+
+        button.translatesAutoresizingMaskIntoConstraints =
+            NO;
 
         [button
-            addTarget:[YMPostImageSaveTarget shared]
-               action:@selector(saveTapped:)
-     forControlEvents:UIControlEventTouchUpInside];
+            addTarget:
+                [YMPostImageSaveTarget shared]
+               action:
+                @selector(saveTapped:)
+     forControlEvents:
+                UIControlEventTouchUpInside];
 
         [container addSubview:button];
-        [container bringSubviewToFront:button];
 
-        [NSLayoutConstraint activateConstraints:@[
+        [container
+            bringSubviewToFront:button];
+
+        [NSLayoutConstraint
+            activateConstraints:@[
+
             [button.leadingAnchor
                 constraintEqualToAnchor:
                     container.leadingAnchor
