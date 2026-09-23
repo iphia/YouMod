@@ -247,172 +247,93 @@ static UIWindow *YMZoomWindowForNode(id node) {
     UIViewController *beforeController =
         YMOwningController(sourceView);
 
-    /*
-     * 먼저 YouTube가 원래 하던 이미지 열기를 실행.
-     */
     %orig;
 
-    /*
-     * 뷰어 전환/zoom window 생성까지 아주 잠깐 기다림.
-     */
     dispatch_after(
         dispatch_time(
             DISPATCH_TIME_NOW,
-            (int64_t)(0.15 * NSEC_PER_SEC)
+            (int64_t)(0.3 * NSEC_PER_SEC)
         ),
         dispatch_get_main_queue(), ^{
 
-        UIView *container = nil;
+        UIViewController *top = nil;
 
-        /*
-         * 1. 기존 YouTube 이미지 확대 UI
-         */
-        UIWindow *zoomWindow =
-            YMZoomWindowForNode(node);
-
-        if (zoomWindow &&
-            !zoomWindow.hidden &&
-            zoomWindow.alpha > 0.0) {
-
-            container = zoomWindow;
-        }
-
-        /*
-         * 2. 로그인 계정의 새로운 A/B 이미지 뷰어
-         *
-         * 별도 ViewController로 전환된 경우
-         * 현재 화면 최상단 VC에 버튼을 붙임.
-         */
-        if (!container && sourceWindow) {
-
-            UIViewController *top =
+        if (sourceWindow) {
+            top =
                 YMTopViewController(
                     sourceWindow.rootViewController
                 );
-
-            if (top &&
-                top.view.window &&
-                top != beforeController) {
-
-                container = top.view;
-            }
         }
 
-        /*
-         * 3. 기존 YTKACE 방식의 뷰어도 지원.
-         */
-        if (!container && beforeController) {
+        UIWindow *zoomWindow =
+            YMZoomWindowForNode(node);
 
-            Class legacyViewer =
-                NSClassFromString(
-                    @"YTInterstitialElementsViewControllerImpl"
-                );
+        NSString *beforeName =
+            beforeController
+                ? NSStringFromClass(beforeController.class)
+                : @"nil";
 
-            if (legacyViewer &&
-                [beforeController
-                    isKindOfClass:legacyViewer]) {
+        NSString *topName =
+            top
+                ? NSStringFromClass(top.class)
+                : @"nil";
 
-                container =
-                    beforeController.view;
-            }
-        }
+        NSString *zoomWindowName =
+            zoomWindow
+                ? NSStringFromClass(zoomWindow.class)
+                : @"nil";
 
-        /*
-         * 뷰어가 실제로 열린 걸 확인하지 못했으면
-         * 아무것도 만들지 않음.
-         *
-         * 따라서 메인 피드에는 버튼이 생기지 않음.
-         */
-        if (!container)
+        NSString *zoomRootName =
+            zoomWindow.rootViewController
+                ? NSStringFromClass(
+                    zoomWindow.rootViewController.class
+                  )
+                : @"nil";
+
+        NSString *message =
+            [NSString stringWithFormat:
+                @"before VC:\n%@\n\n"
+                 "top VC:\n%@\n\n"
+                 "zoomWindow:\n%@\n\n"
+                 "zoom root VC:\n%@",
+                 beforeName,
+                 topName,
+                 zoomWindowName,
+                 zoomRootName];
+
+        NSLog(@"[YouMod PostImage Debug]\n%@", message);
+
+        UIViewController *presenter =
+            top ?: beforeController;
+
+        if (!presenter)
             return;
 
-        YMCurrentPostImageNode = node;
+        UIAlertController *alert =
+            [UIAlertController
+                alertControllerWithTitle:@"Post Image Debug"
+                                 message:message
+                          preferredStyle:UIAlertControllerStyleAlert];
 
-        UIButton *existing =
-            (UIButton *)[container
-                viewWithTag:YMPostImageButtonTag];
+        [alert addAction:
+            [UIAlertAction
+                actionWithTitle:@"복사"
+                         style:UIAlertActionStyleDefault
+                       handler:^(__unused UIAlertAction *action) {
+            UIPasteboard.generalPasteboard.string =
+                message;
+        }]];
 
-        if (existing) {
-            existing.hidden = NO;
+        [alert addAction:
+            [UIAlertAction
+                actionWithTitle:@"닫기"
+                         style:UIAlertActionStyleCancel
+                       handler:nil]];
 
-            [container
-                bringSubviewToFront:existing];
-
-            return;
-        }
-
-        UIButton *button =
-            [UIButton
-                buttonWithType:UIButtonTypeSystem];
-
-        button.tag = YMPostImageButtonTag;
-
-        UIImageSymbolConfiguration *config =
-            [UIImageSymbolConfiguration
-                configurationWithPointSize:18.0
-                            weight:
-                    UIImageSymbolWeightSemibold];
-
-        UIImage *icon =
-            [UIImage
-                systemImageNamed:
-                    @"square.and.arrow.down"
-                withConfiguration:config];
-
-        [button
-            setImage:icon
-            forState:UIControlStateNormal];
-
-        button.tintColor =
-            UIColor.whiteColor;
-
-        button.layer.shadowColor =
-            UIColor.blackColor.CGColor;
-
-        button.layer.shadowOpacity =
-            0.6;
-
-        button.layer.shadowRadius =
-            3.0;
-
-        button.layer.shadowOffset =
-            CGSizeZero;
-
-        button.translatesAutoresizingMaskIntoConstraints =
-            NO;
-
-        [button
-            addTarget:
-                [YMPostImageSaveTarget shared]
-               action:
-                @selector(saveTapped:)
-     forControlEvents:
-                UIControlEventTouchUpInside];
-
-        [container addSubview:button];
-
-        [container
-            bringSubviewToFront:button];
-
-        [NSLayoutConstraint
-            activateConstraints:@[
-
-            [button.leadingAnchor
-                constraintEqualToAnchor:
-                    container.leadingAnchor
-                             constant:12.0],
-
-            [button.topAnchor
-                constraintEqualToAnchor:
-                    container.safeAreaLayoutGuide.topAnchor
-                             constant:60.0],
-
-            [button.widthAnchor
-                constraintEqualToConstant:44.0],
-
-            [button.heightAnchor
-                constraintEqualToConstant:44.0]
-        ]];
+        [presenter
+            presentViewController:alert
+                         animated:YES
+                       completion:nil];
     });
 }
 
