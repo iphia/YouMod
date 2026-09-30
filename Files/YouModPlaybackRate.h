@@ -1,6 +1,7 @@
 #pragma once
 #import <Foundation/Foundation.h>
 #include <string.h>
+#include <math.h>
 
 // Accept the two scalar encodings seen in playback APIs without an ABI cast.
 static inline NSMethodSignature *YMShortsRateSignature(id player) {
@@ -25,5 +26,30 @@ static inline BOOL YMApplyPlaybackRate(id player, float rate) {
         [invocation setArgument:&value atIndex:2];
     }
     [invocation invoke];
+    return YES;
+}
+
+// Read either float or double without assuming a private header's scalar ABI.
+static inline BOOL YMReadPlaybackRate(id source, float *rate) {
+    SEL selector = NSSelectorFromString(@"currentPlaybackRate");
+    if (!rate || ![source respondsToSelector:selector]) return NO;
+    NSMethodSignature *signature = [source methodSignatureForSelector:selector];
+    if (signature.numberOfArguments != 2) return NO;
+    const char *type = signature.methodReturnType;
+    if (strcmp(type, @encode(float)) != 0 && strcmp(type, @encode(double)) != 0) return NO;
+    NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
+    invocation.target = source;
+    invocation.selector = selector;
+    [invocation invoke];
+    float value;
+    if (strcmp(type, @encode(float)) == 0) {
+        [invocation getReturnValue:&value];
+    } else {
+        double result;
+        [invocation getReturnValue:&result];
+        value = (float)result;
+    }
+    if (!isfinite(value) || value <= 0) return NO;
+    *rate = value;
     return YES;
 }

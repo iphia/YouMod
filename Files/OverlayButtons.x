@@ -1,4 +1,5 @@
 #import "Headers.h"
+#import "ShortsSpeed.h"
 
 static NSString *YouModUpdateSpeedLabel = @"YouModUpdateSpeedLabel";
 static NSString *currentSpeedLabel = @"1x";
@@ -495,6 +496,7 @@ static void YouModShowShareNotification(NSString *message, BOOL success) {
 - (void)setPlaybackRate:(float)rate {
     didSelectRate(rate);
     %orig;
+    YMShortsRememberPlaybackRate(self, rate);
 }
 %end
 

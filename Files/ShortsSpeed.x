@@ -11,6 +11,7 @@
 - (NSString *)currentVideoID;
 - (id)currentVideo;
 - (id)activeVideo;
+- (id)activeVideoPlayerOverlay;
 @end
 
 @protocol YMShortsSpeedPlayback <NSObject>
@@ -29,6 +30,29 @@
 @end
 
 static char YMShortsSpeedControlKey;
+static char YMShortsLastRateKey;
+
+void YMShortsRememberPlaybackRate(id player, float rate) {
+    if (player && isfinite(rate) && rate > 0) {
+        objc_setAssociatedObject(player, &YMShortsLastRateKey, @(rate), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
+static float YMShortsCurrentRate(id player) {
+    float rate;
+    if (YMReadPlaybackRate(player, &rate)) return rate;
+    id<YMShortsSpeedOwner> owner = player;
+    id video = [owner respondsToSelector:@selector(activeVideo)] ? [owner activeVideo] : nil;
+    if (YMReadPlaybackRate(video, &rate)) return rate;
+    id overlay = [owner respondsToSelector:@selector(activeVideoPlayerOverlay)] ? [owner activeVideoPlayerOverlay] : nil;
+    if (YMReadPlaybackRate(overlay, &rate)) return rate;
+    // Some Shorts versions expose no getter. Observe the existing setter hook
+    // so automatic speed and menu selections still participate in the toggle.
+    NSNumber *lastRate = objc_getAssociatedObject(player, &YMShortsLastRateKey);
+    return lastRate ? lastRate.floatValue : YMDefaultPlaybackRateForIndex(
+        [[NSUserDefaults standardUserDefaults] integerForKey:@"YouModAutoSpeedIndex"]);
+}
+
 
 static id<YMShortsSpeedPlayback> YMShortsSpeedPlayer(UIViewController *controller) {
     if (![controller respondsToSelector:@selector(player)]) return nil;
@@ -88,7 +112,17 @@ void YMUpdateShortsSpeedButton(UIViewController *controller, NSString *title) {
         control.button.tintColor = UIColor.whiteColor;
         control.button.backgroundColor = [UIColor colorWithWhite:0 alpha:0.6];
         control.button.layer.cornerRadius = 22;
-        control.button.showsMenuAsPrimaryAction = YES;
+        // UIKit owns long-press recognition and cancels the primary action
+        // when presenting the menu. Do not add a competing long-press recognizer.
+        control.button.showsMenuAsPrimaryAction = NO;
+        [control.button addAction:[UIAction actionWithHandler:^(__kindof UIAction * __unused action) {
+            UIImpactFeedbackGenerator *feedback = [[UIImpactFeedbackGenerator alloc]
+                initWithStyle:UIImpactFeedbackStyleLight];
+            [feedback impactOccurred];
+        }] forControlEvents:UIControlEventMenuActionTriggered];
+        extern NSBundle *YouModBundle(void);
+        control.button.accessibilityHint = [YouModBundle() localizedStringForKey:@"SHORTS_SPEED_HINT"
+            value:@"Tap to switch between default speed and 1x. Hold for speed options." table:nil];
         objc_setAssociatedObject(controller, &YMShortsSpeedControlKey, control, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     if (control.button.superview != view) {
@@ -104,6 +138,17 @@ void YMUpdateShortsSpeedButton(UIViewController *controller, NSString *title) {
     id video = YMShortsVideoObject(controller);
     BOOL sameVideo = control.videoID == videoID || [control.videoID isEqualToString:videoID];
     BOOL ready = YMShortsRateSignature(player) && (videoID.length > 0 || video);
+    if (ready) {
+        NSString *rateTitle = [NSString stringWithFormat:@"%gx", YMShortsCurrentRate(player)];
+        [control.button setImage:nil forState:UIControlStateNormal];
+        [control.button setTitle:rateTitle forState:UIControlStateNormal];
+        control.button.titleLabel.font = [UIFont boldSystemFontOfSize:12];
+        control.button.accessibilityValue = rateTitle;
+    } else {
+        [control.button setTitle:nil forState:UIControlStateNormal];
+        [control.button setImage:[UIImage systemImageNamed:@"speedometer"] forState:UIControlStateNormal];
+        control.button.accessibilityValue = nil;
+    }
     // Keep the button visible even if this YouTube version has not exposed a
     // usable player yet. This makes an unsupported path distinguishable from
     // a missing view hook, instead of silently removing the UI.
@@ -117,6 +162,30 @@ void YMUpdateShortsSpeedButton(UIViewController *controller, NSString *title) {
     __weak id weakPlayer = player;
     __weak id weakVideo = video;
     NSString *menuVideoID = [videoID copy];
+    UIActionIdentifier toggleID = @"YouMod.Shorts.ToggleSpeed";
+    [control.button removeActionForIdentifier:toggleID forControlEvents:UIControlEventPrimaryActionTriggered];
+    __weak UIButton *weakButton = control.button;
+    UIAction *toggle = [UIAction actionWithTitle:@"" image:nil identifier:toggleID
+        handler:^(__kindof UIAction * __unused action) {
+            UIViewController *owner = weakController;
+            if (!owner.isViewLoaded || !owner.view.window ||
+                ![[NSUserDefaults standardUserDefaults] boolForKey:ShortsSpeedButton]) return;
+            id currentPlayer = YMShortsSpeedPlayer(owner);
+            NSString *currentID = YMShortsSpeedVideoID(owner);
+            BOOL sameVideoNow = menuVideoID.length > 0
+                ? [menuVideoID isEqualToString:currentID]
+                : (weakVideo && weakVideo == YMShortsVideoObject(owner));
+            if (!ready || currentPlayer != weakPlayer || !sameVideoNow) return;
+            NSInteger index = [[NSUserDefaults standardUserDefaults] integerForKey:@"YouModAutoSpeedIndex"];
+            float rate = YMShortsToggleRate(YMShortsCurrentRate(currentPlayer), index);
+            if (YMApplyPlaybackRate(currentPlayer, rate)) {
+                YMShortsRememberPlaybackRate(currentPlayer, rate);
+                NSString *rateTitle = [NSString stringWithFormat:@"%gx", rate];
+                [weakButton setTitle:rateTitle forState:UIControlStateNormal];
+                weakButton.accessibilityValue = rateTitle;
+            }
+        }];
+    [control.button addAction:toggle forControlEvents:UIControlEventPrimaryActionTriggered];
     NSMutableArray<UIMenuElement *> *actions = [NSMutableArray array];
     if (!ready) {
         extern NSBundle *YouModBundle(void);
@@ -141,7 +210,12 @@ void YMUpdateShortsSpeedButton(UIViewController *controller, NSString *title) {
                 : (weakVideo && weakVideo == YMShortsVideoObject(owner));
             // A menu left open while paging must not change a different reel.
             if (!currentPlayer || currentPlayer != weakPlayer || !sameVideoNow) return;
-            YMApplyPlaybackRate(currentPlayer, rate);
+            if (YMApplyPlaybackRate(currentPlayer, rate)) {
+                YMShortsRememberPlaybackRate(currentPlayer, rate);
+                NSString *rateTitle = [NSString stringWithFormat:@"%gx", rate];
+                [weakButton setTitle:rateTitle forState:UIControlStateNormal];
+                weakButton.accessibilityValue = rateTitle;
+            }
         }];
         [actions addObject:action];
     }

@@ -1103,8 +1103,7 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
         return;
     }
     if (INTFORVAL(AutoSpeedIndex) == 0) return;
-    NSArray *speedLabels = @[@0.01, @0.25, @0.5, @0.75, @1.0, @1.25, @1.5, @1.75, @2.0, @3.0, @4.0, @5.0];
-    [self setPlaybackRate:[speedLabels[INTFORVAL(AutoSpeedIndex)] floatValue]];
+    [self setPlaybackRate:YMDefaultPlaybackRateForIndex(INTFORVAL(AutoSpeedIndex))];
 }
 
 - (void)singleVideo:(YTSingleVideoController *)video currentVideoTimeDidChange:(YTSingleVideoTime *)time {
