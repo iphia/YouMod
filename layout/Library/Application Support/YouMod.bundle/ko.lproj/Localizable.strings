@@ -576,3 +576,6 @@
 "SB_SKIP_ALERT_DURATION" = "Skip alert duration";
 "SB_UNSKIP_ALERT_DURATION" = "Unskip alert duration";
 "SB_MIN_DURATION_SLIDER" = "Minimum segment duration to skip";
+
+"SHORTS_SPEED_BUTTON" = "쇼츠 속도조절 버튼";
+"SHORTS_SPEED_BUTTON_DESC" = "쇼츠 왼쪽 위에 재생속도 선택 버튼을 표시합니다. 켠 뒤 앱을 다시 실행하세요.";

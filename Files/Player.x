@@ -486,7 +486,6 @@ static void YouModAddEndTime(YTPlayerViewController *self, YTSingleVideoControll
 // Extra speed - adapted from YouSpeed
 %group Speed
 
-#define itemCount 13
 
 %hook YTMenuController
 
@@ -515,14 +514,14 @@ static void YouModAddEndTime(YTPlayerViewController *self, YTSingleVideoControll
 
 - (id)init {
     self = %orig;
-    float speeds[] = {0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 5.0, 7.5, 10.0};
-    id options[itemCount];
+    NSArray<NSNumber *> *speeds = YMPlaybackSpeedValues();
+    NSMutableArray *options = [NSMutableArray arrayWithCapacity:speeds.count];
     Class YTVarispeedSwitchControllerOptionClass = %c(YTVarispeedSwitchControllerOption);
-    for (int i = 0; i < itemCount; ++i) {
-        NSString *title = [NSString stringWithFormat:@"%.2fx", speeds[i]];
-        options[i] = [[YTVarispeedSwitchControllerOptionClass alloc] initWithTitle:title rate:speeds[i]];
+    for (NSNumber *speed in speeds) {
+        NSString *title = [NSString stringWithFormat:@"%.2fx", speed.floatValue];
+        [options addObject:[[YTVarispeedSwitchControllerOptionClass alloc] initWithTitle:title rate:speed.floatValue]];
     }
-    [self setValue:[NSArray arrayWithObjects:options count:itemCount] forKey:@"_options"];
+    [self setValue:[options copy] forKey:@"_options"];
     return self;
 }
 
@@ -1577,7 +1576,7 @@ static void YouModFilterVideoButtons(_ASDisplayView *view, NSString *iden) {
     if (IS_ENABLED(OldQualityPicker)) {
         %init(OldVideoQuality);
     }
-    if (IS_ENABLED(ExtraSpeed) || IS_ENABLED(GestureControls) || INTFORVAL(HoldToSpeedIndex) >= 9 || INTFORVAL(AutoSpeedIndex) >= 9) {
+    if (IS_ENABLED(ExtraSpeed) || IS_ENABLED(ShortsSpeedButton) || IS_ENABLED(GestureControls) || INTFORVAL(HoldToSpeedIndex) >= 9 || INTFORVAL(AutoSpeedIndex) >= 9) {
         %init(Speed);
     }
     if (IS_ENABLED(ForceMiniPlayer)) {

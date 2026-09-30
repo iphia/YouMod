@@ -375,6 +375,7 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
     // Section 6
     // Shorts
     NSArray<YMSettingsItem *> *shortsItems = @[
+            YMToggle(YMLOC(@"SHORTS_SPEED_BUTTON"), YMLOC(@"SHORTS_SPEED_BUTTON_DESC"), ShortsSpeedButton),
             YMTextSegment(YMLOC(@"SHORTS_ACTION"), ShortsActionIndex, (@[YMLOC(@"LOOP"), YMLOC(@"SKIP_TO_NEXT_SHORTS"), YMLOC(@"PAUSE_SHORTS")]), 0),
             YMToggle(YMLOC(@"ENABLES_SHORTS_QUALITY"), YMLOC(@"ENABLES_SHORTS_QUALITY_DESC"), EnablesShortsQuality),
             YMToggle(YMLOC(@"SHOW_SHORTS_SEEKBAR"), YMLOC(@"SHOW_SHORTS_SEEKBAR_DESC"), ShowShortsSeekbar),
