@@ -110,8 +110,16 @@ void YMUpdateShortsSpeedButton(UIViewController *controller, NSString *title) {
         control.button.accessibilityLabel = title;
         [control.button setImage:[UIImage systemImageNamed:@"speedometer"] forState:UIControlStateNormal];
         control.button.tintColor = UIColor.whiteColor;
-        control.button.backgroundColor = [UIColor colorWithWhite:0 alpha:0.6];
-        control.button.layer.cornerRadius = 22;
+        control.button.backgroundColor = UIColor.clearColor;
+        [control.button setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+        control.button.titleLabel.font = [UIFont boldSystemFontOfSize:16];
+        control.button.titleLabel.adjustsFontSizeToFitWidth = YES;
+        control.button.titleLabel.minimumScaleFactor = 0.85;
+        control.button.titleLabel.layer.masksToBounds = NO;
+        control.button.titleLabel.layer.shadowColor = UIColor.blackColor.CGColor;
+        control.button.titleLabel.layer.shadowOpacity = 0.85;
+        control.button.titleLabel.layer.shadowRadius = 2.0;
+        control.button.titleLabel.layer.shadowOffset = CGSizeMake(0, 1);
         // UIKit owns long-press recognition and cancels the primary action
         // when presenting the menu. Do not add a competing long-press recognizer.
         control.button.showsMenuAsPrimaryAction = NO;
@@ -142,7 +150,6 @@ void YMUpdateShortsSpeedButton(UIViewController *controller, NSString *title) {
         NSString *rateTitle = [NSString stringWithFormat:@"%gx", YMShortsCurrentRate(player)];
         [control.button setImage:nil forState:UIControlStateNormal];
         [control.button setTitle:rateTitle forState:UIControlStateNormal];
-        control.button.titleLabel.font = [UIFont boldSystemFontOfSize:12];
         control.button.accessibilityValue = rateTitle;
     } else {
         [control.button setTitle:nil forState:UIControlStateNormal];
