@@ -578,3 +578,5 @@
 "SB_MIN_DURATION_SLIDER" = "ความยาวขั้นต่ำของช่วงวิดีโอที่จะให้ข้าม";
 "SHORTS_SPEED_BUTTON" = "Shorts playback speed button";
 "SHORTS_SPEED_BUTTON_DESC" = "Show a playback speed menu button near the top left of Shorts. Restart the app after enabling.";
+
+"SHORTS_SPEED_UNAVAILABLE" = "Playback controls unavailable. Try another Short.";

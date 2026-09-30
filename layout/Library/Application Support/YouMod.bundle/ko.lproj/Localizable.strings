@@ -579,3 +579,5 @@
 
 "SHORTS_SPEED_BUTTON" = "쇼츠 속도조절 버튼";
 "SHORTS_SPEED_BUTTON_DESC" = "쇼츠 왼쪽 위에 재생속도 선택 버튼을 표시합니다. 켠 뒤 앱을 다시 실행하세요.";
+
+"SHORTS_SPEED_UNAVAILABLE" = "재생 제어를 찾지 못했습니다. 다른 쇼츠에서 다시 시도하세요.";

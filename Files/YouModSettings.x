@@ -779,7 +779,15 @@ static const void *kYMCachedDisplayedItemsKey = &kYMCachedDisplayedItemsKey;
     NSString *key = objc_getAssociatedObject(sender, kYMSwitchKeyAssoc);
     if (key) {
         [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:key];
-        [self updateDisplayedItemsAnimated:YES];
+        // Rebuild this row after the switch event. Its visibility is unconditional;
+        // avoid retaining a stale first-row cell across newer UIKit updates.
+        if ([key isEqualToString:ShortsSpeedButton]) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self updateDisplayedItemsAnimated:NO];
+            });
+        } else {
+            [self updateDisplayedItemsAnimated:YES];
+        }
     }
 }
 

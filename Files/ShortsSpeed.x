@@ -1,13 +1,16 @@
 #import "ShortsSpeed.h"
 #import "YouModPlaybackSpeed.h"
 #import <objc/runtime.h>
-#include <string.h>
+#import "YouModPlaybackRate.h"
 
 // Local protocols describe messages, not private class inheritance. In
 // particular, this file needs no YTReelPlayerViewControllerSub declaration.
 @protocol YMShortsSpeedOwner <NSObject>
 - (id)player;
 - (NSString *)videoId;
+- (NSString *)currentVideoID;
+- (id)currentVideo;
+- (id)activeVideo;
 @end
 
 @protocol YMShortsSpeedPlayback <NSObject>
@@ -19,6 +22,7 @@
 @property (nonatomic, strong) UIButton *button;
 @property (nonatomic, weak) id player;
 @property (nonatomic, copy) NSString *videoID;
+@property (nonatomic, weak) id video;
 @end
 
 @implementation YMShortsSpeedControl
@@ -31,31 +35,44 @@ static id<YMShortsSpeedPlayback> YMShortsSpeedPlayer(UIViewController *controlle
     id player = [(id<YMShortsSpeedOwner>)controller player];
     if (![player respondsToSelector:@selector(setPlaybackRate:)]) return nil;
 
-    // A selector check alone cannot detect an incompatible scalar ABI.
-    NSMethodSignature *signature = [player methodSignatureForSelector:@selector(setPlaybackRate:)];
-    if (signature.numberOfArguments != 3 ||
-        strcmp(signature.methodReturnType, @encode(void)) != 0 ||
-        strcmp([signature getArgumentTypeAtIndex:2], @encode(float)) != 0) return nil;
     if ([player respondsToSelector:@selector(isPlayingAd)] &&
         [(id<YMShortsSpeedPlayback>)player isPlayingAd]) return nil;
     return player;
 }
 
 static NSString *YMShortsSpeedVideoID(UIViewController *controller) {
-    if (![controller respondsToSelector:@selector(videoId)]) return nil;
-    id videoID = [(id<YMShortsSpeedOwner>)controller videoId];
+    id<YMShortsSpeedOwner> owner = (id)controller;
+    id videoID = [owner respondsToSelector:@selector(videoId)] ? [owner videoId] : nil;
+    id<YMShortsSpeedOwner> player = [owner respondsToSelector:@selector(player)] ? [owner player] : nil;
+    if (![videoID isKindOfClass:[NSString class]] || [videoID length] == 0) {
+        videoID = [player respondsToSelector:@selector(currentVideoID)] ? [player currentVideoID] : nil;
+    }
     return [videoID isKindOfClass:[NSString class]] ? videoID : nil;
+}
+
+static id YMShortsVideoObject(UIViewController *controller) {
+    id<YMShortsSpeedOwner> owner = (id)controller;
+    id video = [owner respondsToSelector:@selector(currentVideo)] ? [owner currentVideo] : nil;
+    id<YMShortsSpeedOwner> player = [owner respondsToSelector:@selector(player)] ? [owner player] : nil;
+    return video ?: ([player respondsToSelector:@selector(activeVideo)] ? [player activeVideo] : nil);
 }
 
 void YMUpdateShortsSpeedButton(UIViewController *controller, NSString *title) {
     // Called from the reel's UI lifecycle and playback-time callback. Never
     // manipulate UIKit from a background playback callback or load an offscreen view.
-    if (![NSThread isMainThread] || !controller.isViewLoaded) return;
+    if (![NSThread isMainThread]) {
+        __weak UIViewController *weakController = controller;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            YMUpdateShortsSpeedButton(weakController, title);
+        });
+        return;
+    }
+    if (!controller.isViewLoaded) return;
     YMShortsSpeedControl *control = objc_getAssociatedObject(controller, &YMShortsSpeedControlKey);
     BOOL enabled = [[NSUserDefaults standardUserDefaults] boolForKey:ShortsSpeedButton];
     id player = enabled ? YMShortsSpeedPlayer(controller) : nil;
     NSString *videoID = enabled ? YMShortsSpeedVideoID(controller) : nil;
-    if (!player || videoID.length == 0) {
+    if (!enabled) {
         [control.button removeFromSuperview];
         objc_setAssociatedObject(controller, &YMShortsSpeedControlKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         return;
@@ -84,15 +101,33 @@ void YMUpdateShortsSpeedButton(UIViewController *controller, NSString *title) {
     control.button.frame = CGRectMake(insets.left + 12, insets.top + 64, 44, 44);
     [view bringSubviewToFront:control.button];
 
+    id video = YMShortsVideoObject(controller);
     BOOL sameVideo = control.videoID == videoID || [control.videoID isEqualToString:videoID];
-    if (control.button.menu && control.player == player && sameVideo) return;
+    BOOL ready = YMShortsRateSignature(player) && (videoID.length > 0 || video);
+    // Keep the button visible even if this YouTube version has not exposed a
+    // usable player yet. This makes an unsupported path distinguishable from
+    // a missing view hook, instead of silently removing the UI.
+    if (control.button.menu && control.player == player && sameVideo &&
+        control.video == video && control.button.tag == (ready ? 1 : 0)) return;
+    control.button.tag = ready ? 1 : 0;
+    control.video = video;
     control.player = player;
     control.videoID = videoID;
     __weak UIViewController *weakController = controller;
     __weak id weakPlayer = player;
+    __weak id weakVideo = video;
     NSString *menuVideoID = [videoID copy];
     NSMutableArray<UIMenuElement *> *actions = [NSMutableArray array];
-    for (NSNumber *value in YMPlaybackSpeedValues()) {
+    if (!ready) {
+        extern NSBundle *YouModBundle(void);
+        NSString *message = [YouModBundle() localizedStringForKey:@"SHORTS_SPEED_UNAVAILABLE"
+            value:@"Playback controls unavailable" table:nil];
+        UIAction *unavailable = [UIAction actionWithTitle:message image:nil identifier:nil
+            handler:^(__kindof UIAction * __unused action) {}];
+        unavailable.attributes = UIMenuElementAttributesDisabled;
+        [actions addObject:unavailable];
+    }
+    for (NSNumber *value in (ready ? YMPlaybackSpeedValues() : @[])) {
         float rate = value.floatValue;
         UIAction *action = [UIAction actionWithTitle:[NSString stringWithFormat:@"%gx", rate]
                                              image:nil identifier:nil handler:^(__kindof UIAction * __unused selectedAction) {
@@ -101,12 +136,25 @@ void YMUpdateShortsSpeedButton(UIViewController *controller, NSString *title) {
                 ![[NSUserDefaults standardUserDefaults] boolForKey:ShortsSpeedButton]) return;
             id<YMShortsSpeedPlayback> currentPlayer = YMShortsSpeedPlayer(owner);
             NSString *currentID = YMShortsSpeedVideoID(owner);
-            BOOL sameVideoNow = menuVideoID == currentID || [menuVideoID isEqualToString:currentID];
+            BOOL sameVideoNow = menuVideoID.length > 0
+                ? [menuVideoID isEqualToString:currentID]
+                : (weakVideo && weakVideo == YMShortsVideoObject(owner));
             // A menu left open while paging must not change a different reel.
             if (!currentPlayer || currentPlayer != weakPlayer || !sameVideoNow) return;
-            [currentPlayer setPlaybackRate:rate];
+            YMApplyPlaybackRate(currentPlayer, rate);
         }];
         [actions addObject:action];
     }
     control.button.menu = [UIMenu menuWithTitle:title children:actions];
+}
+
+void YMUpdateShortsSpeedFromView(UIView *view, NSString *title) {
+    if (!view.window) return;
+    Class reelClass = NSClassFromString(@"YTReelPlayerViewController");
+    for (UIResponder *responder = view; responder; responder = responder.nextResponder) {
+        if (reelClass && [responder isKindOfClass:reelClass]) {
+            YMUpdateShortsSpeedButton((UIViewController *)responder, title);
+            return;
+        }
+    }
 }

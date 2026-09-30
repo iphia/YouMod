@@ -16,11 +16,19 @@
 
 // Always show Shorts seekbar
 %hook YTShortsPlayerViewController
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    YMUpdateShortsSpeedButton((UIViewController *)self, LOC(@"SHORTS_SPEED_BUTTON"));
+}
 - (BOOL)shouldAlwaysEnablePlayerBar { return IS_ENABLED(ShowShortsSeekbar) ? YES : %orig; }
 - (BOOL)shouldEnablePlayerBarOnlyOnPause { return IS_ENABLED(ShowShortsSeekbar) ? NO : %orig; }
 %end
 
 %hook YTReelPlayerViewControllerSub
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    YMUpdateShortsSpeedButton((UIViewController *)self, LOC(@"SHORTS_SPEED_BUTTON"));
+}
 - (BOOL)shouldAlwaysEnablePlayerBar { return IS_ENABLED(ShowShortsSeekbar) ? YES : %orig; }
 - (BOOL)shouldEnablePlayerBarOnlyOnPause { return IS_ENABLED(ShowShortsSeekbar) ? NO : %orig; }
 %end
@@ -298,6 +306,10 @@ static BOOL isShortsOnlyOn = YES;
 static BOOL isFullscreenEnabled = NO;
 
 %hook YTReelPlayerViewController
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    YMUpdateShortsSpeedButton((UIViewController *)self, LOC(@"SHORTS_SPEED_BUTTON"));
+}
 - (void)viewDidLayoutSubviews {
     %orig;
     YMUpdateShortsSpeedButton((UIViewController *)self, LOC(@"SHORTS_SPEED_BUTTON"));
@@ -478,6 +490,10 @@ static void YouModFilterShortsDisclosure(_ASDisplayView *self, NSString *iden) {
 %end
 
 %hook YTReelWatchPlaybackOverlayView
+- (void)layoutSubviews {
+    %orig;
+    YMUpdateShortsSpeedFromView((UIView *)self, LOC(@"SHORTS_SPEED_BUTTON"));
+}
 %property (nonatomic, retain) UIPinchGestureRecognizer *YouModFullscreenGesture;
 - (void)didMoveToWindow {
     %orig;
