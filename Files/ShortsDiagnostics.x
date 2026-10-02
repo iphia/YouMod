@@ -16,6 +16,58 @@ static NSString *YMClassName(id object) {
     return object ? NSStringFromClass([object class]) : @"nil";
 }
 
+// Class metadata only: no private getter invocation, ivar values, video IDs,
+// account data, or persisted experiment configuration is read here.
+static NSArray *YMShortsRuntimeMetadata(void) {
+    NSMutableArray *result = [NSMutableArray array];
+    for (NSString *name in @[@"YTReelContainerViewController", @"YTShortsContentPresenter",
+                             @"YTReelPlaybackView", @"YTReelWatchRootViewController",
+                             @"YTReelPlayerViewController", @"YTShortsPlayerViewController",
+                             @"YTReelPlayerViewControllerSub", @"YTPlayerViewController"]) {
+        Class cls = NSClassFromString(name);
+        if (!cls) {
+            [result addObject:@{@"class": name, @"exists": @NO}];
+            continue;
+        }
+        NSMutableArray *methods = [NSMutableArray array];
+        NSMutableArray *ivars = [NSMutableArray array];
+        NSMutableArray *properties = [NSMutableArray array];
+        unsigned int count = 0;
+        Method *list = class_copyMethodList(cls, &count);
+        unsigned int methodCount = count;
+        for (unsigned int i = 0; i < count && i < 400; i++) {
+            const char *encoding = method_getTypeEncoding(list[i]);
+            [methods addObject:@{@"selector": NSStringFromSelector(method_getName(list[i])),
+                @"encoding": encoding ? @(encoding) : @""}];
+        }
+        free(list);
+        Ivar *fields = class_copyIvarList(cls, &count);
+        for (unsigned int i = 0; i < count && i < 150; i++) {
+            const char *fieldName = ivar_getName(fields[i]);
+            const char *type = ivar_getTypeEncoding(fields[i]);
+            [ivars addObject:@{@"name": fieldName ? @(fieldName) : @"",
+                @"encoding": type ? @(type) : @""}];
+        }
+        free(fields);
+        objc_property_t *props = class_copyPropertyList(cls, &count);
+        for (unsigned int i = 0; i < count && i < 150; i++) {
+            const char *propertyName = property_getName(props[i]);
+            const char *attributes = property_getAttributes(props[i]);
+            [properties addObject:@{@"name": propertyName ? @(propertyName) : @"",
+                @"attributes": attributes ? @(attributes) : @""}];
+        }
+        free(props);
+        const char *image = class_getImageName(cls);
+        Class superclass = class_getSuperclass(cls);
+        [result addObject:@{@"class": name, @"exists": @YES,
+            @"superclass": superclass ? NSStringFromClass(superclass) : @"",
+            @"imageName": image ? [@(image) lastPathComponent] : @"",
+            @"methodCount": @(methodCount), @"methodsTruncated": @(methodCount > 400),
+            @"methods": methods, @"ivars": ivars, @"properties": properties}];
+    }
+    return result;
+}
+
 static NSDictionary *YMShortsSettingsSnapshot(void) {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     NSMutableDictionary *values = [NSMutableDictionary dictionary];
@@ -135,12 +187,12 @@ void YMCopyShortsDiagnostics(UIViewController *presenter) {
     }
     [YMDiagnosticTimer invalidate];
     YMDiagnosticTimer = nil;
-    NSDictionary *report = @{@"diagnosticVersion": @"v4-diag1", @"ticks": @(YMDiagnosticTicks),
+    NSDictionary *report = @{@"diagnosticVersion": @"v4-diag2", @"ticks": @(YMDiagnosticTicks),
         @"youtubeVersion": [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"unknown",
         @"iosVersion": UIDevice.currentDevice.systemVersion,
         @"settings": YMShortsSettingsSnapshot(), @"events": YMDiagnosticEvents,
         @"lastPlaybackConnection": YMDiagnosticLastState ?: @{},
-        @"snapshots": YMDiagnosticSnapshots};
+        @"snapshots": YMDiagnosticSnapshots, @"runtimeClasses": YMShortsRuntimeMetadata()};
     NSData *data = [NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil];
     if (!data) {
         YMShowDiagnosticMessage(presenter, @"진단 결과 변환에 실패했습니다.");
