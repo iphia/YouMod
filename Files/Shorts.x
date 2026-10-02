@@ -1,3 +1,4 @@
+#import "ShortsDiagnostics.h"
 #import "Headers.h"
 #import "ShortsSpeed.h"
 #import <objc/runtime.h>
@@ -318,11 +319,13 @@ static BOOL isFullscreenEnabled = NO;
 - (BOOL)shouldEnablePlayerBarOnlyOnPause { return IS_ENABLED(ShowShortsSeekbar) ? NO : %orig; }
 - (void)singleVideo:(YTSingleVideoController *)video currentVideoTimeDidChange:(YTSingleVideoTime *)time {
     %orig;
+    YMRecordShortsDiagnostic(@"reelTimeCallback", self);
     YouModMakeAShortsAction(self, video, time);
     YMUpdateShortsSpeedButton((UIViewController *)self, LOC(@"SHORTS_SPEED_BUTTON"));
 }
 - (void)loadPlayerBar {
     %orig;
+    YMRecordShortsDiagnostic(@"loadPlayerBar", self);
     YMUpdateShortsSpeedButton((UIViewController *)self, LOC(@"SHORTS_SPEED_BUTTON"));
     if ((isShortsOnlyOn && IS_ENABLED(ShortsOnly)) || (isFullscreenEnabled && IS_ENABLED(FullScreenShorts))) [[self valueForKey:@"_pivotBarProvider"] performSelector:@selector(hidePivotBar)];
     YTPlayerViewController *main = self.player;
