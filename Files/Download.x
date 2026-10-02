@@ -212,26 +212,26 @@ static void YouModApplyDownloadHeaders(NSMutableURLRequest *request, NSDictionar
 }
 
 - (NSError *)errorWithCode:(NSInteger)code message:(NSString *)message {
-    return [NSError errorWithDomain:@"YouMod" code:code userInfo:@{NSLocalizedDescriptionKey: message ?: @"Download failed"}];
+    return [NSError errorWithDomain:@"YouMod" code:code userInfo:@{NSLocalizedDescriptionKey: message ?: LOC(@"DOWNLOAD_FAILED")}];
 }
 
 - (BOOL)prepareDestinationWithError:(NSError **)error {
     [NSFileManager.defaultManager removeItemAtURL:self.destinationURL error:nil];
     if (![NSFileManager.defaultManager createFileAtPath:self.destinationURL.path contents:nil attributes:nil]) {
-        if (error) *error = [self errorWithCode:20 message:@"Cannot create file"];
+        if (error) *error = [self errorWithCode:20 message:[YouModBundle() localizedStringForKey:@"CANNOT_CREATE_FILE" value:@"Cannot create file" table:nil]];
         return NO;
     }
 
     self.fileHandle = [NSFileHandle fileHandleForWritingAtPath:self.destinationURL.path];
     if (!self.fileHandle) {
-        if (error) *error = [self errorWithCode:21 message:@"Cannot open file"];
+        if (error) *error = [self errorWithCode:21 message:[YouModBundle() localizedStringForKey:@"CANNOT_OPEN_FILE" value:@"Cannot open file" table:nil]];
         return NO;
     }
 
     @try {
         [self.fileHandle truncateFileAtOffset:self.expectedBytes];
     } @catch (NSException *exception) {
-        if (error) *error = [self errorWithCode:22 message:exception.reason ?: @"Cannot allocate file"];
+        if (error) *error = [self errorWithCode:22 message:exception.reason ?: [YouModBundle() localizedStringForKey:@"CANNOT_ALLOCATE_FILE" value:@"Cannot allocate file" table:nil]];
         return NO;
     }
     return YES;
@@ -240,7 +240,7 @@ static void YouModApplyDownloadHeaders(NSMutableURLRequest *request, NSDictionar
 - (void)start {
     dispatch_async(self.stateQueue, ^{
         if (self.expectedBytes == 0) {
-            [self finishWithErrorLocked:[self errorWithCode:23 message:@"Unknown stream size"]];
+            [self finishWithErrorLocked:[self errorWithCode:23 message:[YouModBundle() localizedStringForKey:@"UNKNOWN_STREAM_SIZE" value:@"Unknown stream size" table:nil]]];
             return;
         }
 
@@ -322,10 +322,10 @@ static void YouModApplyDownloadHeaders(NSMutableURLRequest *request, NSDictionar
     NSInteger statusCode = httpResponse.statusCode;
     BOOL statusOK = statusCode == 206 || (self.totalChunkCount == 1 && statusCode == 200);
     if (httpResponse && !statusOK)
-        return [self errorWithCode:24 message:@"Range request rejected by server"];
+        return [self errorWithCode:24 message:[YouModBundle() localizedStringForKey:@"RANGE_REQUEST_REJECTED" value:@"Range request rejected by server" table:nil]];
 
     if (data.length != chunk.length)
-        return [self errorWithCode:25 message:@"Incomplete chunk"];
+        return [self errorWithCode:25 message:[YouModBundle() localizedStringForKey:@"INCOMPLETE_CHUNK" value:@"Incomplete chunk" table:nil]];
 
     return nil;
 }
@@ -359,7 +359,7 @@ static void YouModApplyDownloadHeaders(NSMutableURLRequest *request, NSDictionar
                 [self.fileHandle seekToFileOffset:chunk.offset];
                 [self.fileHandle writeData:chunkData];
             } @catch (NSException *exception) {
-                writeError = [self errorWithCode:26 message:exception.reason ?: @"Write failed"];
+                writeError = [self errorWithCode:26 message:exception.reason ?: [YouModBundle() localizedStringForKey:@"WRITE_FAILED" value:@"Write failed" table:nil]];
             }
 
             dispatch_async(self.stateQueue, ^{
@@ -410,7 +410,7 @@ static void YouModApplyDownloadHeaders(NSMutableURLRequest *request, NSDictionar
         }
         [NSFileManager.defaultManager removeItemAtURL:self.destinationURL error:nil];
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (self.completion) self.completion(nil, error ?: [self errorWithCode:27 message:@"Download failed"]);
+            if (self.completion) self.completion(nil, error ?: [self errorWithCode:27 message:LOC(@"DOWNLOAD_FAILED")]);
         });
     });
 }
@@ -786,7 +786,7 @@ static void YouModRequestPhotoAccess(void (^completion)(BOOL granted)) {
 static void YouModSaveVideoToPhotos(NSURL *fileURL, UIViewController *presenter, void (^completion)(BOOL success, NSError *error)) {
     YouModRequestPhotoAccess(^(BOOL granted) {
         if (!granted) {
-            NSError *error = [NSError errorWithDomain:@"YouMod" code:1 userInfo:@{NSLocalizedDescriptionKey: @"Photos access denied"}];
+            NSError *error = [NSError errorWithDomain:@"YouMod" code:1 userInfo:@{NSLocalizedDescriptionKey: LOC(@"PHOTO_ACCESS_DENINED")}];
             completion(NO, error);
             return;
         }
@@ -1153,7 +1153,7 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
     }
     double totalMB = (double)total / 1048576.0;
 
-    NSString *title = [NSString stringWithFormat:@"%@ - %ld%%", self.baseProgressTitle ?: @"Downloading", (long)lrintf(progress * 100.0f)];
+    NSString *title = [NSString stringWithFormat:@"%@ - %ld%%", self.baseProgressTitle ?: LOC(@"DOWNLOADING"), (long)lrintf(progress * 100.0f)];
     NSString *subtitle;
     if (total > 0) {
         subtitle = [NSString stringWithFormat:@"%.1f MB/s · %.1f MB", speedMBps, totalMB];
@@ -1218,7 +1218,7 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
         __strong typeof(weakSelf) self = weakSelf;
         if (!self || self.cancelled) return;
         if (videoError) {
-            [self failWithError:videoError ?: [NSError errorWithDomain:@"YouMod" code:2 userInfo:@{NSLocalizedDescriptionKey: @"Video download failed"}]];
+            [self failWithError:videoError ?: [NSError errorWithDomain:@"YouMod" code:2 userInfo:@{NSLocalizedDescriptionKey: [YouModBundle() localizedStringForKey:@"VIDEO_DOWNLOAD_FAILED" value:@"Video download failed" table:nil]}]];
             return;
         }
 
@@ -1228,7 +1228,7 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
             __strong typeof(weakSelf) self = weakSelf;
             if (!self || self.cancelled) return;
             if (audioError) {
-                [self failWithError:audioError ?: [NSError errorWithDomain:@"YouMod" code:3 userInfo:@{NSLocalizedDescriptionKey: @"Audio download failed"}]];
+                [self failWithError:audioError ?: [NSError errorWithDomain:@"YouMod" code:3 userInfo:@{NSLocalizedDescriptionKey: [YouModBundle() localizedStringForKey:@"AUDIO_DOWNLOAD_FAILED" value:@"Audio download failed" table:nil]}]];
                 return;
             }
             unsigned long long durationMs = videoFormat.durationMs ?: audioFormat.durationMs;
@@ -1379,7 +1379,7 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
         }
         if (error) {
             [[NSFileManager defaultManager] removeItemAtURL:downloadURL error:nil];
-            [self failWithError:error ?: [NSError errorWithDomain:@"YouMod" code:4 userInfo:@{NSLocalizedDescriptionKey: @"Audio download failed"}]];
+            [self failWithError:error ?: [NSError errorWithDomain:@"YouMod" code:4 userInfo:@{NSLocalizedDescriptionKey: [YouModBundle() localizedStringForKey:@"AUDIO_DOWNLOAD_FAILED" value:@"Audio download failed" table:nil]}]];
             return;
         }
         
@@ -1404,7 +1404,7 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
         AVKeyValueStatus status = [asset statusOfValueForKey:@"duration" error:&error];
         if (status != AVKeyValueStatusLoaded) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                completion(error ?: [NSError errorWithDomain:@"YouMod" code:5 userInfo:@{NSLocalizedDescriptionKey: @"Failed to load audio duration"}]);
+                completion(error ?: [NSError errorWithDomain:@"YouMod" code:5 userInfo:@{NSLocalizedDescriptionKey: [YouModBundle() localizedStringForKey:@"AUDIO_DURATION_FAILED" value:@"Failed to load audio duration" table:nil]}]);
             });
             return;
         }
@@ -1416,7 +1416,7 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
         AVAssetExportSession *exportSession = [AVAssetExportSession exportSessionWithAsset:asset presetName:AVAssetExportPresetAppleM4A];
         if (!exportSession) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                completion([NSError errorWithDomain:@"YouMod" code:6 userInfo:@{NSLocalizedDescriptionKey: @"Failed to create export session"}]);
+                completion([NSError errorWithDomain:@"YouMod" code:6 userInfo:@{NSLocalizedDescriptionKey: [YouModBundle() localizedStringForKey:@"EXPORT_SESSION_FAILED" value:@"Failed to create export session" table:nil]}]);
             });
             return;
         }
@@ -1430,7 +1430,7 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
                 if (exportSession.status == AVAssetExportSessionStatusCompleted) {
                     completion(nil);
                 } else {
-                    completion(exportSession.error ?: [NSError errorWithDomain:@"YouMod" code:7 userInfo:@{NSLocalizedDescriptionKey: @"Audio trim export failed"}]);
+                    completion(exportSession.error ?: [NSError errorWithDomain:@"YouMod" code:7 userInfo:@{NSLocalizedDescriptionKey: [YouModBundle() localizedStringForKey:@"AUDIO_TRIM_FAILED" value:@"Audio trim export failed" table:nil]}]);
                 }
             });
         }];
@@ -1445,7 +1445,7 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
     if (YouModVideoFileCanUseAVFoundation(outputURL)) {
         [self mergeVideoWithAVFoundationVideoURL:videoURL audioURL:audioURL outputURL:outputURL durationMs:durationMs presenter:presenter fallbackError:nil];
     } else {
-        [self failWithError:[NSError errorWithDomain:@"YouMod" code:16 userInfo:@{NSLocalizedDescriptionKey: @"Cannot download audio from this stream"}]];
+        [self failWithError:[NSError errorWithDomain:@"YouMod" code:16 userInfo:@{NSLocalizedDescriptionKey: [YouModBundle() localizedStringForKey:@"AUDIO_STREAM_UNSUPPORTED" value:@"Cannot download audio from this stream" table:nil]}]];
     }
 }
 
@@ -1458,13 +1458,13 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
     AVAssetTrack *videoTrack = [[videoAsset tracksWithMediaType:AVMediaTypeVideo] firstObject];
     AVAssetTrack *audioTrack = [[audioAsset tracksWithMediaType:AVMediaTypeAudio] firstObject];
     if (!videoTrack || !audioTrack) {
-        [self failWithError:fallbackError ?: [NSError errorWithDomain:@"YouMod" code:5 userInfo:@{NSLocalizedDescriptionKey: @"Merge failed"}]];
+        [self failWithError:fallbackError ?: [NSError errorWithDomain:@"YouMod" code:5 userInfo:@{NSLocalizedDescriptionKey: [YouModBundle() localizedStringForKey:@"MERGE_FAILED" value:@"Merge failed" table:nil]}]];
         return;
     }
 
     CMTime duration = YouModExportDuration(videoAsset, audioAsset, durationMs);
     if (!YouModCMTimeIsUsable(duration)) {
-        [self failWithError:fallbackError ?: [NSError errorWithDomain:@"YouMod" code:9 userInfo:@{NSLocalizedDescriptionKey: @"Cannot determine duration"}]];
+        [self failWithError:fallbackError ?: [NSError errorWithDomain:@"YouMod" code:9 userInfo:@{NSLocalizedDescriptionKey: [YouModBundle() localizedStringForKey:@"DURATION_UNAVAILABLE" value:@"Cannot determine duration" table:nil]}]];
         return;
     }
     NSError *insertError = nil;
@@ -1500,7 +1500,7 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
             if (exporter.status == AVAssetExportSessionStatusCompleted) {
                 [self completeWithFileURL:outputURL isVideo:YES presenter:presenter];
             } else {
-                [self failWithError:exporter.error ?: [NSError errorWithDomain:@"YouMod" code:6 userInfo:@{NSLocalizedDescriptionKey: @"Merge failed"}]];
+                [self failWithError:exporter.error ?: [NSError errorWithDomain:@"YouMod" code:6 userInfo:@{NSLocalizedDescriptionKey: [YouModBundle() localizedStringForKey:@"MERGE_FAILED" value:@"Merge failed" table:nil]}]];
             }
         });
     }];
@@ -1609,7 +1609,7 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
     
     [[[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         if (!self || self.cancelled) return;
-        if (error || !data) { completionBlock(nil, @"Server unreachable."); return; }
+        if (error || !data) { completionBlock(nil, [YouModBundle() localizedStringForKey:@"SERVER_UNREACHABLE" value:@"Server unreachable." table:nil]); return; }
         NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
         
         if (json[@"job_id"]) {
@@ -1617,7 +1617,7 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
             [self pollJobStatus:json[@"job_id"] isAudio:isAudioDl presenter:presenter completion:completionBlock];
         }
         else {
-            completionBlock(nil, json[@"error"] ?: @"Job init failed.");
+            completionBlock(nil, json[@"error"] ?: [YouModBundle() localizedStringForKey:@"JOB_INIT_FAILED" value:@"Job init failed." table:nil]);
         }
     }] resume];
 }
@@ -1650,7 +1650,7 @@ static void YouModPresentMenu(YTPlayerViewController *player, NSArray <YouModMen
             [self downloadSingleFile:singleFileName isAudio:isAudio forJobId:jobId presenter:presenter completion:completionBlock];
             
         } else if ([status isEqualToString:@"error"]) {
-            completionBlock(nil, json[@"error"] ?: @"Error.");
+            completionBlock(nil, json[@"error"] ?: LOC(@"ERROR"));
         } else {
             dispatch_async(dispatch_get_main_queue(), ^{ 
                 [self updateProgressTitle:LOC(@"DOWNLOADING_TO_SERVER") progress:0.0f]; 

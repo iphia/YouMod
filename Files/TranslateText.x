@@ -254,7 +254,7 @@ static void YouModTranslateText(NSString *text, NSString *targetLang, void (^com
             self.selectedLangName = self.languageTitles.firstObject;
         } else {
             self.selectedLangCode = @"en";
-            self.selectedLangName = @"English";
+            self.selectedLangName = LOC(@"ENGLISH");
         }
     }
 

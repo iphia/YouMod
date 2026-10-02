@@ -24,9 +24,14 @@
 @property (nonatomic, weak) id player;
 @property (nonatomic, copy) NSString *videoID;
 @property (nonatomic, weak) id video;
+@property (nonatomic, copy) void (^showMenu)(void);
+- (void)handleLongPress:(UILongPressGestureRecognizer *)gesture;
 @end
 
 @implementation YMShortsSpeedControl
+- (void)handleLongPress:(UILongPressGestureRecognizer *)gesture {
+    if (gesture.state == UIGestureRecognizerStateBegan && self.showMenu) self.showMenu();
+}
 @end
 
 static char YMShortsSpeedControlKey;
@@ -120,14 +125,13 @@ void YMUpdateShortsSpeedButton(UIViewController *controller, NSString *title) {
         control.button.titleLabel.layer.shadowOpacity = 0.85;
         control.button.titleLabel.layer.shadowRadius = 2.0;
         control.button.titleLabel.layer.shadowOffset = CGSizeMake(0, 1);
-        // UIKit owns long-press recognition and cancels the primary action
-        // when presenting the menu. Do not add a competing long-press recognizer.
-        control.button.showsMenuAsPrimaryAction = NO;
-        [control.button addAction:[UIAction actionWithHandler:^(__kindof UIAction * __unused action) {
-            UIImpactFeedbackGenerator *feedback = [[UIImpactFeedbackGenerator alloc]
-                initWithStyle:UIImpactFeedbackStyleLight];
-            [feedback impactOccurred];
-        }] forControlEvents:UIControlEventMenuActionTriggered];
+        // An explicit recognizer provides a public, configurable delay.
+        // Cancellation prevents the same press from also toggling speed.
+        UILongPressGestureRecognizer *hold = [[UILongPressGestureRecognizer alloc]
+            initWithTarget:control action:@selector(handleLongPress:)];
+        hold.minimumPressDuration = 0.30;
+        hold.cancelsTouchesInView = YES;
+        [control.button addGestureRecognizer:hold];
         extern NSBundle *YouModBundle(void);
         control.button.accessibilityHint = [YouModBundle() localizedStringForKey:@"SHORTS_SPEED_HINT"
             value:@"Tap to switch between default speed and 1x. Hold for speed options." table:nil];
@@ -159,7 +163,7 @@ void YMUpdateShortsSpeedButton(UIViewController *controller, NSString *title) {
     // Keep the button visible even if this YouTube version has not exposed a
     // usable player yet. This makes an unsupported path distinguishable from
     // a missing view hook, instead of silently removing the UI.
-    if (control.button.menu && control.player == player && sameVideo &&
+    if (control.showMenu && control.player == player && sameVideo &&
         control.video == video && control.button.tag == (ready ? 1 : 0)) return;
     control.button.tag = ready ? 1 : 0;
     control.video = video;
@@ -193,20 +197,27 @@ void YMUpdateShortsSpeedButton(UIViewController *controller, NSString *title) {
             }
         }];
     [control.button addAction:toggle forControlEvents:UIControlEventPrimaryActionTriggered];
-    NSMutableArray<UIMenuElement *> *actions = [NSMutableArray array];
-    if (!ready) {
+    control.showMenu = ^{
+        UIViewController *presenter = weakController;
+        UIButton *button = weakButton;
+        if (!presenter.isViewLoaded || !presenter.view.window || !button.window ||
+            presenter.presentedViewController ||
+            ![[NSUserDefaults standardUserDefaults] boolForKey:ShortsSpeedButton]) return;
+        id currentPlayer = YMShortsSpeedPlayer(presenter);
+        NSString *currentID = YMShortsSpeedVideoID(presenter);
+        BOOL sameVideoNow = menuVideoID.length > 0
+            ? [menuVideoID isEqualToString:currentID]
+            : (weakVideo && weakVideo == YMShortsVideoObject(presenter));
+        if (ready && (currentPlayer != weakPlayer || !sameVideoNow)) return;
         extern NSBundle *YouModBundle(void);
-        NSString *message = [YouModBundle() localizedStringForKey:@"SHORTS_SPEED_UNAVAILABLE"
+        NSString *message = ready ? nil : [YouModBundle() localizedStringForKey:@"SHORTS_SPEED_UNAVAILABLE"
             value:@"Playback controls unavailable" table:nil];
-        UIAction *unavailable = [UIAction actionWithTitle:message image:nil identifier:nil
-            handler:^(__kindof UIAction * __unused action) {}];
-        unavailable.attributes = UIMenuElementAttributesDisabled;
-        [actions addObject:unavailable];
-    }
-    for (NSNumber *value in (ready ? YMPlaybackSpeedValues() : @[])) {
-        float rate = value.floatValue;
-        UIAction *action = [UIAction actionWithTitle:[NSString stringWithFormat:@"%gx", rate]
-                                             image:nil identifier:nil handler:^(__kindof UIAction * __unused selectedAction) {
+        UIAlertController *sheet = [UIAlertController alertControllerWithTitle:title message:message
+            preferredStyle:UIAlertControllerStyleActionSheet];
+        for (NSNumber *value in (ready ? YMPlaybackSpeedValues() : @[])) {
+            float rate = value.floatValue;
+            UIAlertAction *action = [UIAlertAction actionWithTitle:[NSString stringWithFormat:@"%gx", rate]
+                style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *selectedAction) {
             UIViewController *owner = weakController;
             if (!owner.isViewLoaded || !owner.view.window ||
                 ![[NSUserDefaults standardUserDefaults] boolForKey:ShortsSpeedButton]) return;
@@ -223,10 +234,18 @@ void YMUpdateShortsSpeedButton(UIViewController *controller, NSString *title) {
                 [weakButton setTitle:rateTitle forState:UIControlStateNormal];
                 weakButton.accessibilityValue = rateTitle;
             }
-        }];
-        [actions addObject:action];
-    }
-    control.button.menu = [UIMenu menuWithTitle:title children:actions];
+            }];
+            [sheet addAction:action];
+        }
+        NSString *cancel = [YouModBundle() localizedStringForKey:@"CANCEL" value:@"Cancel" table:nil];
+        [sheet addAction:[UIAlertAction actionWithTitle:cancel style:UIAlertActionStyleCancel handler:nil]];
+        sheet.popoverPresentationController.sourceView = button;
+        sheet.popoverPresentationController.sourceRect = button.bounds;
+        UIImpactFeedbackGenerator *feedback = [[UIImpactFeedbackGenerator alloc]
+            initWithStyle:UIImpactFeedbackStyleLight];
+        [feedback impactOccurred];
+        [presenter presentViewController:sheet animated:YES completion:nil];
+    };
 }
 
 void YMUpdateShortsSpeedFromView(UIView *view, NSString *title) {

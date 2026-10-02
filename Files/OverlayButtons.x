@@ -6,7 +6,7 @@ static NSString *currentSpeedLabel = @"1x";
 static float currentPlaybackRate = 1.0;
 
 static NSString *YouModUpdateNotification = @"YouModUpdateNotification";
-static NSString *currentQualityLabel = @"Auto";
+static NSString *currentQualityLabel = nil;
 
 static NSString *speedLabel(float rate) {
     NSNumberFormatter *formatter = [[NSNumberFormatter alloc] init];
@@ -417,12 +417,12 @@ static BOOL isRelatedVideosExpanded = NO;
 - (void)updateQualityButton:(id)arg {
     for (YMOverlayButtonSpec *spec in YMRegisteredOverlayButtons()) {
         if ([spec.identifier isEqualToString:@"quality.video"]) {
-            spec.title = currentQualityLabel;
+            spec.title = currentQualityLabel ?: [YouModBundle() localizedStringForKey:@"AUTO" value:@"Auto" table:nil];
             
             YTQTMButton *btn = (YTQTMButton *)[self viewWithTag:spec.viewTag];
             if (btn) {
-                [btn setTitle:currentQualityLabel forState:UIControlStateNormal];
-                btn.titleLabel.font = YMOverlayTextButtonFont(currentQualityLabel, CGSizeMake(25, 25));
+                [btn setTitle:currentQualityLabel ?: [YouModBundle() localizedStringForKey:@"AUTO" value:@"Auto" table:nil] forState:UIControlStateNormal];
+                btn.titleLabel.font = YMOverlayTextButtonFont(btn.currentTitle, CGSizeMake(25, 25));
             }
             break;
         }
@@ -592,7 +592,7 @@ static NSString *getCompactQualityLabel(MLFormat *format) {
     YMRegisterOverlayButton(speed);
     YMOverlayButtonSpec *quality = [[YMOverlayButtonSpec alloc] init];
     quality.identifier = @"quality.video";
-    quality.title = currentQualityLabel;
+    quality.title = currentQualityLabel ?: [YouModBundle() localizedStringForKey:@"AUTO" value:@"Auto" table:nil];
     quality.settingsSymbolName = @"slider.horizontal.3";
     quality.displayName = LOC(@"QUALITY_BUTTON");
     quality.sortOrder = 500;

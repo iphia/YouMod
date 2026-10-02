@@ -604,7 +604,7 @@ static void SABRRunDownload(uint64_t videoItag, uint64_t audioItag,
                             void (^completion)(NSURL *videoURL, NSURL *audioURL, NSString *err)) {
     dispatch_async(SABRQueue(), ^{
         if (!gCapURL || !gCapPlainBody.length) {
-            dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, nil, @"No request captured yet — play the video for a few seconds first."); });
+            dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, nil, [YouModBundle() localizedStringForKey:@"PLAY_BEFORE_DOWNLOAD" value:@"No request captured yet — play the video for a few seconds first." table:nil]); });
             return;
         }
         BOOL wantVideo = videoItag != 0;

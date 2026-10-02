@@ -582,3 +582,24 @@
 "SHORTS_SPEED_UNAVAILABLE" = "Playback controls unavailable. Try another Short.";
 
 "SHORTS_SPEED_HINT" = "Tap to switch between default speed and 1x. Hold for speed options.";
+
+// Additional localized status messages
+"CANNOT_CREATE_FILE" = "Cannot create file";
+"CANNOT_OPEN_FILE" = "Cannot open file";
+"CANNOT_ALLOCATE_FILE" = "Cannot allocate file";
+"UNKNOWN_STREAM_SIZE" = "Unknown stream size";
+"RANGE_REQUEST_REJECTED" = "Range request rejected by server";
+"INCOMPLETE_CHUNK" = "Incomplete chunk";
+"WRITE_FAILED" = "Write failed";
+"VIDEO_DOWNLOAD_FAILED" = "Video download failed";
+"AUDIO_DOWNLOAD_FAILED" = "Audio download failed";
+"AUDIO_DURATION_FAILED" = "Failed to load audio duration";
+"EXPORT_SESSION_FAILED" = "Failed to create export session";
+"AUDIO_TRIM_FAILED" = "Audio trim export failed";
+"AUDIO_STREAM_UNSUPPORTED" = "Cannot download audio from this stream";
+"MERGE_FAILED" = "Merge failed";
+"DURATION_UNAVAILABLE" = "Cannot determine duration";
+"SERVER_UNREACHABLE" = "Server unreachable.";
+"JOB_INIT_FAILED" = "Job init failed.";
+"PLAY_BEFORE_DOWNLOAD" = "No request captured yet — play the video for a few seconds first.";
+"AUTO" = "Auto";
