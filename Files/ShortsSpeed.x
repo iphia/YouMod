@@ -1,4 +1,3 @@
-#import "ShortsDiagnostics.h"
 #import "ShortsSpeed.h"
 #import "YouModPlaybackSpeed.h"
 #import <objc/runtime.h>
@@ -93,7 +92,6 @@ void YMUpdateShortsSpeedButton(UIViewController *controller, NSString *title) {
         return;
     }
     if (!controller.isViewLoaded) return;
-    YMRecordShortsDiagnostic(@"speedButtonUpdate", controller);
     YMShortsSpeedControl *control = objc_getAssociatedObject(controller, &YMShortsSpeedControlKey);
     BOOL enabled = [[NSUserDefaults standardUserDefaults] boolForKey:ShortsSpeedButton];
     id player = enabled ? YMShortsSpeedPlayer(controller) : nil;
@@ -144,19 +142,10 @@ void YMUpdateShortsSpeedButton(UIViewController *controller, NSString *title) {
     UIEdgeInsets insets = view.safeAreaInsets;
     control.button.frame = CGRectMake(insets.left + 12, insets.top + 64, 44, 44);
     [view bringSubviewToFront:control.button];
-    YMRecordShortsDiagnostic(@"speedButtonAttached", controller);
 
     id video = YMShortsVideoObject(controller);
     BOOL sameVideo = control.videoID == videoID || [control.videoID isEqualToString:videoID];
     BOOL ready = YMShortsRateSignature(player) && (videoID.length > 0 || video);
-    YMRecordShortsDiagnosticState(@{
-        @"ownerClass": NSStringFromClass([controller class]),
-        @"playerClass": player ? NSStringFromClass([player class]) : @"nil-or-ad-or-no-setter",
-        @"videoClass": video ? NSStringFromClass([video class]) : @"nil",
-        @"hasVideoID": @(videoID.length > 0),
-        @"compatibleRateSetter": @(YMShortsRateSignature(player) != nil),
-        @"ready": @(ready)
-    });
     if (ready) {
         NSString *rateTitle = [NSString stringWithFormat:@"%gx", YMShortsCurrentRate(player)];
         [control.button setImage:nil forState:UIControlStateNormal];

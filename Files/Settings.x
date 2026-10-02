@@ -1,4 +1,3 @@
-#import "ShortsDiagnostics.h"
 // Settings.x
 // Thanks to the original codes from YTUHD by PoomSmart - https://github.com/PoomSmart/YTUHD/blob/0e735616fd8fc6546339da7fdc78466f16f23ffd/Settings.x
 #import "Headers.h"
@@ -376,8 +375,6 @@ static NSString *GetCacheSize() { // YTLite - @dayanch96
     // Section 6
     // Shorts
     NSArray<YMSettingsItem *> *shortsItems = @[
-            YMAction(@"Shorts 진단 시작", @"화면 구조와 기능 호출을 최대 3분 기록합니다.", ^(UIViewController *vc) { YMStartShortsDiagnostics(vc); }),
-            YMAction(@"Shorts 진단 결과 복사", @"기록을 중지하고 진단 텍스트를 복사합니다.", ^(UIViewController *vc) { YMCopyShortsDiagnostics(vc); }),
             YMToggle(YMLOC(@"SHORTS_SPEED_BUTTON"), YMLOC(@"SHORTS_SPEED_BUTTON_DESC"), ShortsSpeedButton),
             YMTextSegment(YMLOC(@"SHORTS_ACTION"), ShortsActionIndex, (@[YMLOC(@"LOOP"), YMLOC(@"SKIP_TO_NEXT_SHORTS"), YMLOC(@"PAUSE_SHORTS")]), 0),
             YMToggle(YMLOC(@"ENABLES_SHORTS_QUALITY"), YMLOC(@"ENABLES_SHORTS_QUALITY_DESC"), EnablesShortsQuality),

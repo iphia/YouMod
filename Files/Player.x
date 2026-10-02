@@ -1,4 +1,3 @@
-#import "ShortsDiagnostics.h"
 #import "Headers.h"
 
 static BOOL isWiFiConnected() {
@@ -1094,7 +1093,6 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
 
 %new
 - (void)YouModSetAutoSpeed {
-    YMRecordShortsDiagnostic(@"autoSpeedMethod", self);
     if (self.YouModHoldGesture && (self.YouModHoldGesture.state == UIGestureRecognizerStateBegan || self.YouModHoldGesture.state == UIGestureRecognizerStateChanged)) {
         return;
     }
