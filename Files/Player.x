@@ -1,4 +1,8 @@
 #import "Headers.h"
+#import "YouModHoldSpeedState.h"
+
+@implementation YMHoldSpeedState
+@end
 
 static BOOL isWiFiConnected() {
     struct sockaddr_in zeroAddress;
@@ -1093,15 +1097,12 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
 
 %new
 - (void)YouModSetAutoSpeed {
-    if (self.YouModHoldGesture && (self.YouModHoldGesture.state == UIGestureRecognizerStateBegan || self.YouModHoldGesture.state == UIGestureRecognizerStateChanged)) {
+    YMHoldSpeedState *state = YMHoldState(self, [self activeVideo]);
+    if (state.active && self.YouModHoldGesture && (self.YouModHoldGesture.state == UIGestureRecognizerStateBegan || self.YouModHoldGesture.state == UIGestureRecognizerStateChanged)) {
         return;
     }
-    if (IS_ENABLED(GlobalSpeedLocked)) {
-        NSInteger speedIndex = INTFORVAL(HoldToSpeedIndex);
-        CGFloat speed = YouModSpeedForHoldIndex(speedIndex);
-        [self setPlaybackRate:speed];
-        return;
-    }
+    // Old exported GlobalSpeedLocked values must not override default speed.
+    state.locked = NO;
     if (INTFORVAL(AutoSpeedIndex) == 0) return;
     [self setPlaybackRate:YMDefaultPlaybackRateForIndex(INTFORVAL(AutoSpeedIndex))];
 }
@@ -1313,103 +1314,51 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
 
 %new
 - (void)YouModHoldToSpeed:(UILongPressGestureRecognizer *)gesture {
-    if (isRelatedVideosPanelEnabled(self)) return;
-
-    CGPoint touchLocation = [gesture locationInView:self.view];
-    CGFloat activeWidth = remainingOverlayWidth(self, self.view.bounds.size.width);
-    if (touchLocation.x > activeWidth) return;
-
-    NSInteger speedIndex = INTFORVAL(HoldToSpeedIndex);
-    CGFloat speed = YouModSpeedForHoldIndex(speedIndex);
-    
-    static CGPoint startLocation;
-    static BOOL initialLockState;
-    static BOOL isPendingToggle;
-
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    id video = [self activeVideo];
+    YMHoldSpeedState *state = YMHoldState(self, video);
+    NSInteger index = INTFORVAL(HoldToSpeedIndex);
+    CGFloat speed = YouModSpeedForHoldIndex(index);
+    BOOL allowLock = IS_ENABLED(LockSpeed) && index != 0;
 
     if (gesture.state == UIGestureRecognizerStateBegan) {
-        if (self.playerState != 3) return;
-        YTMainAppVideoPlayerOverlayViewController *con = [self activeVideoPlayerOverlay];
-        CGFloat currentRate = [con currentPlaybackRate];
-        CGFloat savedNormal = FLOAT_FOR_KEY(GlobalSavedNormalRate);
-        
-        if (savedNormal <= 0) {
-            savedNormal = (currentRate > 0) ? currentRate : 1.0;
-            [defaults setFloat:savedNormal forKey:GlobalSavedNormalRate];
-            [defaults setBool:NO forKey:GlobalSpeedLocked];
-        }
-
-        initialLockState = IS_ENABLED(GlobalSpeedLocked);
-        isPendingToggle = NO;
-        startLocation = [gesture locationInView:self.playerView];
-        
-        if (!initialLockState) {
-            if (currentRate != speed) {
-                savedNormal = (currentRate > 0) ? currentRate : 1.0;
-                [defaults setFloat:savedNormal forKey:GlobalSavedNormalRate];
-            }
-            [self setPlaybackRate:speed];
-            [self YouModShowSpeedToast:speed isLocked:NO];
-        } else {
-            [self setPlaybackRate:speed];
-            [self YouModShowSpeedToast:speed isLocked:YES];
-        }
+        if (!video || index == 0 || IS_ENABLED(DisablesLongHold) ||
+            isRelatedVideosPanelEnabled(self) || self.playerState != 3) return;
+        CGPoint location = [gesture locationInView:self.view];
+        if (location.x > remainingOverlayWidth(self, self.view.bounds.size.width)) return;
+        if (!allowLock) state.locked = NO;
+        YTMainAppVideoPlayerOverlayViewController *overlay = [self activeVideoPlayerOverlay];
+        CGFloat rate = [overlay currentPlaybackRate];
+        if (!state.locked) state.normalRate = isfinite(rate) && rate > 0 ? rate : 1.0f;
+        state.initialLock = state.locked;
+        state.pendingToggle = NO;
+        state.startY = [gesture locationInView:self.playerView].y;
+        state.active = YES;
+        [self setPlaybackRate:speed];
+        [self YouModShowSpeedToast:speed isLocked:state.locked];
     } else if (gesture.state == UIGestureRecognizerStateChanged) {
-        if (!IS_ENABLED(LockSpeed)) return;
-        
-        CGPoint currentLocation = [gesture locationInView:self.playerView];
-        CGFloat dragDistanceY = currentLocation.y - startLocation.y;
-        
-        BOOL stateChanged = NO;
-        
-        if (!isPendingToggle && dragDistanceY > 40.0) {
-            isPendingToggle = YES;
-            stateChanged = YES;
-        } else if (isPendingToggle && dragDistanceY < 20.0) {
-            isPendingToggle = NO;
-            stateChanged = YES;
-        }
-        
-        if (stateChanged) {
-            UIImpactFeedbackStyle feedbackStyle = isPendingToggle ? UIImpactFeedbackStyleMedium : UIImpactFeedbackStyleLight;
-            UIImpactFeedbackGenerator *feedback = [[UIImpactFeedbackGenerator alloc] initWithStyle:feedbackStyle];
+        if (!state.active || !allowLock) return;
+        CGFloat distance = [gesture locationInView:self.playerView].y - state.startY;
+        BOOL pending = state.pendingToggle;
+        if (!pending && distance > 40.0) pending = YES;
+        else if (pending && distance < 20.0) pending = NO;
+        if (pending != state.pendingToggle) {
+            state.pendingToggle = pending;
+            UIImpactFeedbackGenerator *feedback = [[UIImpactFeedbackGenerator alloc]
+                initWithStyle:pending ? UIImpactFeedbackStyleMedium : UIImpactFeedbackStyleLight];
             [feedback impactOccurred];
-
-            BOOL previewLockState = initialLockState ? !isPendingToggle : isPendingToggle;
-            
-            if (previewLockState) {
-                [self YouModShowSpeedToast:speed isLocked:YES];
-            } else {
-                CGFloat toastSpeed;
-                if (initialLockState) {
-                    CGFloat savedNormal = [defaults floatForKey:GlobalSavedNormalRate];
-                    toastSpeed = (savedNormal >= 0.25) ? savedNormal : 1.0;
-                } else {
-                    toastSpeed = speed;
-                }
-                [self YouModShowSpeedToast:toastSpeed isLocked:NO];
-            }
+            BOOL previewLock = state.initialLock != pending;
+            CGFloat previewRate = state.initialLock && !previewLock ? state.normalRate : speed;
+            [self YouModShowSpeedToast:previewRate isLocked:previewLock];
         }
-    } else if (gesture.state == UIGestureRecognizerStateEnded || 
-               gesture.state == UIGestureRecognizerStateCancelled || 
+    } else if (gesture.state == UIGestureRecognizerStateEnded ||
+               gesture.state == UIGestureRecognizerStateCancelled ||
                gesture.state == UIGestureRecognizerStateFailed) {
-
-        BOOL finalLockState = initialLockState;
-        if (gesture.state == UIGestureRecognizerStateEnded || (gesture.state == UIGestureRecognizerStateCancelled && isPendingToggle)) {
-            if (IS_ENABLED(LockSpeed) && isPendingToggle) {
-                finalLockState = !initialLockState;
-                [defaults setBool:finalLockState forKey:GlobalSpeedLocked];
-            }
+        // Always process termination, including outside the original touch area.
+        // A changed video or rejected begin must never restore an old video's rate.
+        if (state.active) {
+            BOOL locked = YMFinishHold(state, gesture.state == UIGestureRecognizerStateEnded, allowLock);
+            [self setPlaybackRate:locked ? speed : state.normalRate];
         }
-        if (finalLockState) {
-            [self setPlaybackRate:speed];
-        } else {
-            CGFloat savedNormal = [defaults floatForKey:GlobalSavedNormalRate];
-            CGFloat targetRate = (savedNormal >= 0.25) ? savedNormal : 1.0;
-            [self setPlaybackRate:targetRate];
-        }
-        isPendingToggle = NO;
         [self YouModHideSpeedToast];
     }
 }
