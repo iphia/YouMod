@@ -191,6 +191,7 @@ void YMUpdateShortsSpeedButton(UIViewController *controller, NSString *title) {
             float rate = YMShortsToggleRate(YMShortsCurrentRate(currentPlayer), index);
             if (YMApplyPlaybackRate(currentPlayer, rate)) {
                 YMShortsRememberPlaybackRate(currentPlayer, rate);
+                YMRememberLastPlaybackRate(rate);
                 NSString *rateTitle = [NSString stringWithFormat:@"%gx", rate];
                 [weakButton setTitle:rateTitle forState:UIControlStateNormal];
                 weakButton.accessibilityValue = rateTitle;
@@ -230,6 +231,7 @@ void YMUpdateShortsSpeedButton(UIViewController *controller, NSString *title) {
             if (!currentPlayer || currentPlayer != weakPlayer || !sameVideoNow) return;
             if (YMApplyPlaybackRate(currentPlayer, rate)) {
                 YMShortsRememberPlaybackRate(currentPlayer, rate);
+                YMRememberLastPlaybackRate(rate);
                 NSString *rateTitle = [NSString stringWithFormat:@"%gx", rate];
                 [weakButton setTitle:rateTitle forState:UIControlStateNormal];
                 weakButton.accessibilityValue = rateTitle;

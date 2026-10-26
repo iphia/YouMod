@@ -214,6 +214,7 @@
 "DISABLES_CAPTION_TRACK" = "Désactiver automatiquement les sous-titres";
 "DISABLES_CAPTION_TRACK_DESC" = "Désactive automatiquement les sous-titres si la langue préférée est générée automatiquement ou introuvable.";
 "DEFAULT_SPEED" = "Vitesse de lecture par défaut";
+"LAST_PLAYBACK_SPEED" = "Last playback speed";
 "DEFAULT_SPEED_DESC" = "Remplace la vitesse de lecture par défaut.";
 "QUALITY_BUTTON" = "Contrôles de qualité";
 "SPEED_BUTTON" = "Contrôles de vitesse";

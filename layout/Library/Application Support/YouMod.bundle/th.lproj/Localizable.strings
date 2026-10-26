@@ -214,6 +214,7 @@
 "DISABLES_CAPTION_TRACK" = "ปิดใช้งานคำบรรยายอัตโนมัติ";
 "DISABLES_CAPTION_TRACK_DESC" = "ปิดใช้งานคำบรรยายอัตโนมัติถ้าภาษาที่เลือกเป็นแบบสร้างโดยอัตโนมัติหรือไม่พบ";
 "DEFAULT_SPEED" = "ความเร็วเริ่มต้น";
+"LAST_PLAYBACK_SPEED" = "Last playback speed";
 "DEFAULT_SPEED_DESC" = "ตั้งค่าความเร็วเริ่มต้นเมื่อเปิดวิดีโอใหม่";
 "QUALITY_BUTTON" = "ควบคุมคุณภาพวิดีโอ";
 "SPEED_BUTTON" = "ควบคุมความเร็ววิดีโอ";

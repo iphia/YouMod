@@ -765,6 +765,15 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
 }
 
 %hook YTPlayerViewController
+- (void)setPlaybackRate:(float)rate {
+    id video = [self activeVideo];
+    YMHoldSpeedState *state = YMHoldState(self, video);
+    // Do not persist startup resets, ads, automatic defaults, or hold boosts.
+    BOOL remember = video && state.appliedDefaultSpeed && !state.applyingDefaultSpeed &&
+        !state.active && !state.locked && ![self isPlayingAd];
+    %orig;
+    if (remember) YMRememberLastPlaybackRate(rate);
+}
 %property (nonatomic, retain) UIPanGestureRecognizer *YouModPanGesture;
 %property (nonatomic, retain) UITapGestureRecognizer *YouModTapGesture;
 %property (nonatomic, retain) UILabel *YouModGestureHUD;
@@ -1097,6 +1106,7 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
 
 %new
 - (void)YouModSetAutoSpeed {
+    if (![self activeVideo] || [self isPlayingAd]) return;
     YMHoldSpeedState *state = YMHoldState(self, [self activeVideo]);
     if (state.active && self.YouModHoldGesture && (self.YouModHoldGesture.state == UIGestureRecognizerStateBegan || self.YouModHoldGesture.state == UIGestureRecognizerStateChanged)) {
         return;
@@ -1104,7 +1114,13 @@ static CGFloat remainingOverlayWidth(YTPlayerViewController *pvc, CGFloat fullWi
     // Old exported GlobalSpeedLocked values must not override default speed.
     state.locked = NO;
     if (INTFORVAL(AutoSpeedIndex) == 0) return;
-    [self setPlaybackRate:YMDefaultPlaybackRateForIndex(INTFORVAL(AutoSpeedIndex))];
+    state.applyingDefaultSpeed = YES;
+    @try {
+        [self setPlaybackRate:YMDefaultPlaybackRateForIndex(INTFORVAL(AutoSpeedIndex))];
+        state.appliedDefaultSpeed = YES;
+    } @finally {
+        state.applyingDefaultSpeed = NO;
+    }
 }
 
 - (void)singleVideo:(YTSingleVideoController *)video currentVideoTimeDidChange:(YTSingleVideoTime *)time {
