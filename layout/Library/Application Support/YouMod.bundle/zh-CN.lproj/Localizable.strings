@@ -214,6 +214,7 @@
 "DISABLES_CAPTION_TRACK" = "自动关闭字幕";
 "DISABLES_CAPTION_TRACK_DESC" = "如果首选语言是自动生成或未找到，则自动关闭字幕。";
 "DEFAULT_SPEED" = "默认播放倍速";
+"LAST_PLAYBACK_SPEED" = "Last playback speed";
 "DEFAULT_SPEED_DESC" = "覆盖默认播放速度。";
 "QUALITY_BUTTON" = "画质控制";
 "SPEED_BUTTON" = "速度控制";

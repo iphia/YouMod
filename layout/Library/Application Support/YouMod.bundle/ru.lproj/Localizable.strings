@@ -214,6 +214,7 @@
 "DISABLES_CAPTION_TRACK" = "Automatically disable captions";
 "DISABLES_CAPTION_TRACK_DESC" = "Automatically disable captions if the preferred language is auto-generated or not found.";
 "DEFAULT_SPEED" = "Default playback rate";
+"LAST_PLAYBACK_SPEED" = "Last playback speed";
 "DEFAULT_SPEED_DESC" = "Overrides the default playback speed.";
 "QUALITY_BUTTON" = "Quality controls";
 "SPEED_BUTTON" = "Speed controls";

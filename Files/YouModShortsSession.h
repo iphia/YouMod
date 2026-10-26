@@ -1,5 +1,6 @@
 #pragma once
 #import <Foundation/Foundation.h>
+#import "YouModPlaybackSpeed.h"
 
 @interface YMModernReelState : NSObject
 @property (nonatomic) BOOL visible;
@@ -23,7 +24,7 @@ static inline BOOL YMClaimShortsDefault(YMModernReelState *state, id player,
         state.videoID = videoID;
         state.appliedDefault = NO;
     }
-    if (state.appliedDefault || index <= 0 || index >= 12) return NO;
+    if (state.appliedDefault || index <= 0 || index > YMLastPlaybackSpeedIndex) return NO;
     state.appliedDefault = YES;
     return YES;
 }

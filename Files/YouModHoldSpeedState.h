@@ -6,6 +6,8 @@
 @interface YMHoldSpeedState : NSObject
 @property (nonatomic, weak) id video;
 @property (nonatomic) BOOL active;
+@property (nonatomic) BOOL appliedDefaultSpeed;
+@property (nonatomic) BOOL applyingDefaultSpeed;
 @property (nonatomic) BOOL locked;
 @property (nonatomic) BOOL initialLock;
 @property (nonatomic) BOOL pendingToggle;

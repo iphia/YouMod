@@ -214,6 +214,7 @@
 "DISABLES_CAPTION_TRACK" = "자막 자동 끄기";
 "DISABLES_CAPTION_TRACK_DESC" = "선호하는 언어의 자막이 자동 생성 자막이거나 해당 언어의 자막이 없으면 자막을 끕니다.";
 "DEFAULT_SPEED" = "기본 재생 속도";
+"LAST_PLAYBACK_SPEED" = "마지막 재생속도";
 "DEFAULT_SPEED_DESC" = "영상의 기본 재생 속도를 변경합니다.";
 "QUALITY_BUTTON" = "화질 조절";
 "SPEED_BUTTON" = "재생 속도 조절";
