@@ -66,6 +66,13 @@ jobs:
             git checkout --quiet
             mv *.sdk "$THEOS/sdks"
             
+      # Logos 777925d drops same-line code after %orig, including closing braces.
+      # Run after cache restore as well as a fresh Theos checkout.
+      - name: Pin compatible Logos
+        run: |
+          git -C "$THEOS/vendor/logos" fetch --depth=1 origin a62370066a97e36d59b200a9fa10c5091f5e8972
+          git -C "$THEOS/vendor/logos" checkout --detach a62370066a97e36d59b200a9fa10c5091f5e8972
+
       - name: Clone headers
         run: |
           if [ ! -d "$THEOS/include/YouTubeHeader" ]; then
